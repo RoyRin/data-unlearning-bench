@@ -149,7 +149,7 @@ if __name__ == "__main__":
     N_models_total = 500
     N_models_per_job = N_models_total // N_machines_per_fs
 
-    forget_set_ind = job_id // N_machines_per_fs  # 0 to 9
+    forget_set_ind = ( job_id // N_machines_per_fs)+1  # 0 to 9
     machine_ind = job_id % N_machines_per_fs      # 0 to 4
     model_id_offset = machine_ind * N_models_per_job
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
     try:
         train_oracles(
-            forget_set_id=forget_set_ind + 1,
+            forget_set_id=forget_set_ind ,
             n_models=N_models_per_job,
             ckpt_dir=MODELS_PATH,
             should_save_train_logits=should_save_train_logits,
