@@ -36,14 +36,6 @@ def train_oracles(
     ds_name = DATASET,
 ):
     """
-    - masks_path gives the path to a np array of shape [K, train_set_size],
-    where each row gives us a boolean mask of the samples that we want to train
-    on (True for the included samples and False for the excluded samples)
-
-    - idx_start and n_models tell us which rows of the masks to use for training;
-    in particular, we will use the masks from masks_path[idx_start:idx_start +
-    n_models] for training
-
     - model_id_offset is the offset to add to the model_id when saving the
     model, here only for a hacky use, feel free to ignore
     """
@@ -95,7 +87,7 @@ def train_oracles(
             model=model,
             loader=train_loader,
             checkpoints_dir=ckpt_dir,
-            model_id=model_id,
+            model_id=model_id + model_id_offset,
             checkpoint_epochs=checkpoint_epochs,
             epochs=epochs,
             eval_loader=None,
