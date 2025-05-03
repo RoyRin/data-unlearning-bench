@@ -1,33 +1,4 @@
-# Attribute-to-Delete: Machine Unlearning via Datamodel Matching
-
-Machine unlearning—efficiently removes the effect of a small "forget set" of training data on a pre-trained machine learning model. Within unlearning we make progress both on formalizing the right measure of success for unlearning, and on algorithms for unlearning.
-
-Our starting point is the perspective that the goal of unlearning is to produce a model whose outputs are statistically indistinguishable from those of a model re-trained on all but the forget set. We introduce a new measure, KLOM (KL divergence of Margins), which measures this distance in a principled fashion.
-
-We propose the following meta-algorithm, which we call Datamodel Matching (DMM): given a trained model, we (a) use data attribution to predict the output of the model if it were re-trained on all but the forget set points; then (b) fine-tune the pre-trained model to match these predicted outputs. 
-
-
-* [Paper](https://arxiv.org/abs/2410.23232)
-* [Blog](https://safr-ai-lab.notion.site/Attribute-to-Delete-Machine-Unlearning-via-Datamodel-Matching-13b2148c60ef800eab85f6aaaa250881)
-
-# Core Contributions:
-
-In this work we introduce a new, simple evaluation methodology and provide insight into why this is better than existing evaluations. We introduce 3 new unlearning algorithms:
-
-* New Evaluation methods
-    * KLOM (KL divergence of Margins)
-* New Algorithms:
-    * Oracle Matching 
-    * Datamodel Matching
-    * Datamodel Direct
-
-Existing Baselines/benchmarks 
-* Evaluation methods:
-    * ULIRA (Unlearning LIkelihood Ratio Attack)
-* Algorithms
-    * Gradient Ascent
-    * Gradient Descent
-    * SCRUB
+# Data Unlearning Benchmark
 
 ## How to Run - Quick start
 The main evaluation of unlearning algortihms is orchestrated through `eval_suite.py`.
@@ -78,17 +49,6 @@ Unlearning Algorithms are located in `unlearning.unlearning_algos`, and are spec
 
 SCRUB is reimplemented from `https://github.com/meghdadk/SCRUB/tree/main`, largely copying directly, but with minor edits made for compatibility reasons and to fix a batch-order issue we found.
 
-
-
-## TODOs for Sam:
-1. Do a pass of `Datamodels` section
-2. Figure out how to host datamodels if we want (should not be blocking).
-3. need to copy over and host `regression_v2/all_logit_vitaly_infls_denoised.npy`
-
-## Datamodels
-TODO @SAM - where should we host the datamodels that we are using.
-
-In order to compute datamodels, we provide the following code: `precomputing/computing_datamodels.ipynb`, which assumes it is run from a SLURM server (through the `submitit` library).
 
 
 ## Outline of Codebase:
