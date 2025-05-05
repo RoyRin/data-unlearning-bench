@@ -4,7 +4,7 @@ from copy import deepcopy
 
 # third party deps
 import torch
-from torch.utils.data import Dataloader
+from torch.utils.data import DataLoader 
 
 class UnlearningMethod(ABC):
     @abstractmethod

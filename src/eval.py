@@ -12,10 +12,10 @@ from tqdm import tqdm
 from scipy import stats
 
 def to_np_cpu(x):
-    if torch.is_tensor(all_oracle_margins):
+    if torch.is_tensor(x):
         return x.cpu().numpy()
-    elif isinstance(all_oracle_margins, np.ndarray):
-        return x.cpu()
+    elif isinstance(x, np.ndarray):
+        return x
     else:
         raise TypeError(f"Type for {x} should be torch or numpy ndarray")
         import pdb; pdb.set_trace()
@@ -97,7 +97,6 @@ def compute_binned_KL_div(p_arr: np.ndarray,
 def kl_from_margins(
     all_unlearned_margins: torch.Tensor,
     all_oracle_margins: torch.Tensor,
-    forget_set_idx: int,
     clip_min: float = -100,
     clip_max: float = 100,
 ):

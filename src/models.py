@@ -7,6 +7,7 @@ import os
 import torch
 from huggingface_hub import HfApi, hf_hub_url
 import requests
+import numpy as np
 
 class Mul(torch.nn.Module):
     def __init__(self, weight):
@@ -108,11 +109,10 @@ def get_urls_hf(
     assert source in ["hf"], f"Source {source} not supported"
     assert mode in ["margins", "models"], f"Mode {mode} not supported"
     mode_ids = {"margins": "margins", "models": "sd"}
-    api = HfApi()
     # initially we were doing this but after the latest updte its too slow so hardcoding for now
+    # api = HfApi()
     # all_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset", revision=rev)
     all_files = hf_files_hardcoded(N, directory, mode)
-    import pdb; pdb.set_trace()
     filtered_files = sorted(f for f in all_files if f.startswith(f"{directory}/") and mode_ids[mode] in f)
     return [hf_hub_url(repo_id=repo_id, filename=filename, repo_type="dataset") for filename in filtered_files]
 
@@ -124,7 +124,12 @@ def load_from_url_hf(
     assert mode in ["margins", "models"], f"Mode {mode} not supported"
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
-    tensor_contents = torch.load(io.BytesIO(resp.content), map_location=device)
+    contents_buf = io.BytesIO(resp.content)
+    if url.endswith('.pt'):
+        tensor_contents = torch.load(contents_buf, map_location=device)
+    else:
+        assert url.endswith(".npy"), f"only .pt and .npy files supported but found {url.split('.')[-1]}"
+        return np.load(contents_buf)
     if mode == "margins":
         return tensor_contents.cpu().numpy()
     model = ResNet9().to(device)
@@ -140,13 +145,4 @@ MODELS = {
 }
 
 if __name__=="__main__":
-    print("Testing Loading")
-    all_margins_train = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt"
-    all_margins_val = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/val_margins_all.pt"
-    p_m2 = load_from_url_hf(all_margins_train)
-    oracle_dir = f"oracles/CIFAR10/forget_set_{forget_id}"
-    model_paths = get_urls_hf(N, directory=oracle_dir, mode="models")
-    margin_paths = get_urls_hf(N, directory=oracle_dir)
-    o_m1 = load_from_url_hf(model_paths[0], mode="models")
-    o_m2 = load_from_url_hf(margin_paths[0])
-    import pdb; pdb.set_trace()
+    pass
