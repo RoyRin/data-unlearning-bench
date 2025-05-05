@@ -25,6 +25,12 @@ def get_cifar_dataloader(indices=None, split='train', shuffle=True, num_workers=
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
 
+def get_cifar_forget_indices(
+
+):
+
 DATASETS = {
     "cifar10": get_cifar_dataloader
 }
+
+
