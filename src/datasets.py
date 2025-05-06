@@ -2,6 +2,7 @@
 from paths import DATA_DIR
 
 # external deps
+import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 
@@ -10,7 +11,7 @@ def get_cifar_dataloader(indices=None, split='train', shuffle=True, num_workers=
     assert split in ['train', 'val', 'all'], "split must be one of ['train', 'val', 'all']"
     transform = transforms.Compose([
         transforms.ToTensor(),
-        torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
                                              (0.2023, 0.1994, 0.201)),
     ])
     if split == 'all':
@@ -26,7 +27,11 @@ def get_cifar_dataloader(indices=None, split='train', shuffle=True, num_workers=
     return dataloader
 
 DATASETS = {
-    "cifar10": get_cifar_dataloader
+    "cifar10": {
+        "loader": get_cifar_dataloader,
+        "train_size": 50_000,
+        "val_size": 10_000,
+    }
 }
 
 
