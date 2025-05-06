@@ -4,16 +4,16 @@ from datasets import DATASETS
 from models import MODELS
 from models import load_from_url_hf, get_urls_hf
 from eval import kl_from_margins, get_margins, to_np_cpu
-from paths import FORGET_INDICES_DIR
+from paths import FORGET_INDICES_DIR, ORACLES_DIR
 
 # third party deps
 import numpy as np
 import torch
 from tqdm import tqdm
 
-N = 2
+N = 100
 forget_id = 4
-assert forget_id in [4], f"forget idx: {forget_id} not supported"
+assert forget_id in [i for i in range(1,7)], f"forget idx: {forget_id} not supported"
 ul_method = "ascent_forget"
 ul_method_kwargs = {
     "optimizer_cls": torch.optim.SGD,
@@ -79,13 +79,9 @@ except:
 
     pdb.set_trace()
 
-# TODO get oracle margins
-oracle_margin_urls = get_urls_hf(N, directory=f"oracles/CIFAR10/forget_set_{forget_id}")
-# for now test on validation since the train split margins are not there yet --------
-oracle_margin_urls = [oo for oo in oracle_margin_urls if "val" in oo]
-all_oracle_margins = np.stack([load_from_url_hf(url=m) for m in oracle_margin_urls])
-all_unlearn_margins = all_unlearn_margins[:, 50_000:]
-# ------------
+oracle_margins_dir = ORACLES_DIR / dataset / f"forget_set_{forget_id}" / "all_margins.pt"
+oracle_margins = torch.load(oracle_margins_dir)
+all_oracle_margins = oracle_margins[:N, :]
 res = kl_from_margins(all_unlearn_margins, all_oracle_margins)
 import pdb
 
