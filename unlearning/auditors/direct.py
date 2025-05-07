@@ -13,28 +13,6 @@ from unlearning.unlearning_algos.utils import get_margins
 from unlearning.auditors.utils import load_model_from_dict
 
 
-def config_submitit(config, RESULTS_DIR):
-    import submitit
-
-    SUBMITIT_LOGS_DIR = RESULTS_DIR / "submitit_logs"
-    executor = submitit.AutoExecutor(folder=SUBMITIT_LOGS_DIR)
-
-    gres = config.get("gres", "gpu:a100:1")
-    constraint = config.get("constraint", None)
-    additional_params = {"gres": gres}
-
-    if constraint is not None:
-        additional_params["constraint"] = constraint
-
-    executor.update_parameters(
-        slurm_partition=config.get("slurm_partition", "background"),
-        slurm_time=config.get("slurm_time", "15:00:00"),
-        slurm_cpus_per_task=config.get("slurm_cpus_per_task", 8),
-        slurm_additional_parameters=additional_params,
-    )
-    return executor
-
-
 def get_u_margins(model, ckpt_path, unlearn_fn, unlearning_kwargs,
                   train_loader, eval_loader, forget_set_indices):
 

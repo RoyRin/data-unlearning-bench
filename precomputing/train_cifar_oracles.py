@@ -51,7 +51,10 @@ def train_oracles(
     else:
         train_indices = np.arange(50_000)
 
-
+    #train_indices remove the forget_set_indices
+    train_indices = np.setdiff1d(train_indices, forget_set_indices)
+    print(f"size of train_indices: {len(train_indices)}")
+    print(f"size of forget_set_indices: {len(forget_set_indices)}")
 
     print(f"computing from {n_models}")
     for model_id in range(n_models):
@@ -82,6 +85,7 @@ def train_oracles(
 
         # checkpoint_epochs # every 5 epochs
         checkpoint_epochs = list(range(5, epochs, 5)) + [epochs - 1]
+        checkpoint_epochs = [10, 15, epochs-1]
         
         model = train.train_cifar10(
             model=model,
@@ -119,14 +123,6 @@ def train_oracles(
 
 
 
-"""
-what do i need to do:
-2. where to save models
-3. identify masks
-
-
-"""
-
 if __name__ == "__main__":
     import sys
     from pathlib import Path
@@ -138,7 +134,7 @@ if __name__ == "__main__":
 
     N_forget_sets = 10
     N_machines_per_fs = 5
-    N_models_total = 500
+    N_models_total = 200
     N_models_per_job = N_models_total // N_machines_per_fs
 
     forget_set_ind = ( job_id // N_machines_per_fs)+1  # 0 to 9
