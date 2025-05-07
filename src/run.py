@@ -20,6 +20,7 @@ ul_method_kwargs = {
     "optimizer_kwargs": {"lr": 1e-3},
     "n_iters": 3,
 }
+ul_method = "do_nothing"
 assert (
     ul_method in UNLEARNING_METHODS
 ), f"method: {method} not found in {UNLEARNING_METHODS}"
@@ -32,8 +33,6 @@ if model != "resnet9" or dataset != "cifar10":
     raise NotImplementedError(
         "Current pipeline just supports resnet9 cifar10 since it relies on hf checkpoints"
     )
-
-
 if ul_method == "do_nothing":
     pretrain_margin_urls = [
         "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt",
@@ -57,6 +56,7 @@ else:
     # this could be more efficient if indexing the datasets before init dataloaders but its not bottl
     all_dataloader = DATASETS[dataset]["loader"](split="all")
     pretrain_model_urls = get_urls_hf(N=N, mode="models")
+    import pdb; pdb.set_trace()
     all_pretrain_models_gen = (
         load_from_url_hf(url=m, mode="models") for m in pretrain_model_urls
     )

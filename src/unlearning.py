@@ -5,8 +5,6 @@ from typing import Dict
 # third party deps
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-
 
 def do_nothing(model, forget_loader, retain_loader):
     return deepcopy(model)
@@ -24,7 +22,7 @@ def ascent_forget(
 ):
     model = model.train().to(device)
     optimizer = optimizer_cls(model.parameters(), **optimizer_kwargs)
-    for it in tqdm(range(n_iters), desc="gradient ascent"):
+    for it in range(n_iters):
         for idx, (x, y) in enumerate(forget_loader):
             x, y = x.to(device), y.to(device)
             out = model(x)

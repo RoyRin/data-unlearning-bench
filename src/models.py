@@ -130,12 +130,11 @@ def get_urls_hf(
     # api = HfApi()
     # all_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset", revision=rev)
     all_files = hf_files_hardcoded(N, directory, mode)
-    filtered_files = sorted(
-        f for f in all_files if f.startswith(f"{directory}/") and mode_ids[mode] in f
-    )
+    # filtered_files = [
+    #   f for f in all_files if f.startswith(f"{directory}/") and mode_ids[mode] in f ]
     return [
         hf_hub_url(repo_id=repo_id, filename=filename, repo_type="dataset")
-        for filename in filtered_files
+        for filename in all_files 
     ]
 
 

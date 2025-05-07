@@ -1,0 +1,33 @@
+import torch
+import io
+import requests
+from tqdm import tqdm
+import numpy as np
+from eval import kl_from_margins
+
+load_tensor_from_hf = lambda url, timeout = 30, device = "cpu": torch.load(io.BytesIO(requests.get(url, timeout=timeout).content), map_location=device)
+get_oracle_margins_url = lambda forget_id, mode : f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracles/CIFAR10/only_margins/forget_set_{forget_id}/{mode}_margins_all.pt"
+load_npy_from_hf = lambda url: np.load(io.BytesIO(requests.get(url).content))
+get_forget_set_url = lambda forget_id: f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/forget_set_indices/CIFAR10/forget_set_{forget_id}.npy"
+pretrain_margins_train = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt")
+pretrain_margins_val = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/val_margins_all.pt")
+pretrain_margins = torch.cat([pretrain_margins_train, pretrain_margins_val], dim=-1)
+N = 100
+forget_indices = {}
+all_margins = {}
+for i in tqdm(range(1,9)):
+    forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
+    train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
+    val_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "val"))[:N, :]
+    joined_margins = torch.cat([train_margins, val_margins], dim=-1)
+    all_margins[i] = joined_margins
+pretrain_margins = pretrain_margins[:N, :] # (model_id, point_id)
+for i in tqdm(range(1,9)):
+    res = kl_from_margins(all_margins[i], pretrain_margins)
+    res_fgt = res[forget_indices[i]]
+    res_ret = res[[k for k in range(50_000) if k not in forget_indices[i]]]
+    res_val = res[50_000:]
+    print(f"FGT {i}:-------------")
+    print(f"klom forget: {np.percentile(res_fgt, 95)}")
+    print(f"klom retain: {np.percentile(res_ret, 95)}")
+    print(f"klom val: {np.percentile(res_val, 95)}")
