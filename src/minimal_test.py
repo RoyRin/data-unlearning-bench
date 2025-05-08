@@ -3,8 +3,25 @@ import io
 import requests
 from tqdm import tqdm
 import numpy as np
-from eval import kl_from_margins
+from eval import kl_from_margins, get_margins
+from models import ResNet9
+import os
+from pathlib import Path
+from datasets import get_cifar_dataloader
 
+def do_nothing_test(all_margins, pretrain_margins):
+    for i in tqdm(range(1,9)):
+        res = kl_from_margins(all_margins[i], pretrain_margins)
+        res_fgt = res[forget_indices[i]]
+        res_ret = res[[k for k in range(50_000) if k not in forget_indices[i]]]
+        res_val = res[50_000:]
+        print(f"FGT {i}:-------------")
+        print(f"klom forget: {np.percentile(res_fgt, 95)}")
+        print(f"klom retain: {np.percentile(res_ret, 95)}")
+        print(f"klom val: {np.percentile(res_val, 95)}")
+
+tmp_dir = Path("./tmp")
+os.makedirs(tmp_dir, exist_ok=True)
 load_tensor_from_hf = lambda url, timeout = 30, device = "cpu": torch.load(io.BytesIO(requests.get(url, timeout=timeout).content), map_location=device)
 get_oracle_margins_url = lambda forget_id, mode : f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracles/CIFAR10/only_margins/forget_set_{forget_id}/{mode}_margins_all.pt"
 load_npy_from_hf = lambda url: np.load(io.BytesIO(requests.get(url).content))
@@ -15,19 +32,36 @@ pretrain_margins = torch.cat([pretrain_margins_train, pretrain_margins_val], dim
 N = 100
 forget_indices = {}
 all_margins = {}
-for i in tqdm(range(1,9)):
-    forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
-    train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
-    val_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "val"))[:N, :]
-    joined_margins = torch.cat([train_margins, val_margins], dim=-1)
-    all_margins[i] = joined_margins
+oracle_margins_path = tmp_dir / "oracle_margins.pt"
+if not os.path.exists(oracle_margins_path):
+    for i in tqdm(range(1,9)):
+        forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
+        train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
+        val_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "val"))[:N, :]
+        joined_margins = torch.cat([train_margins, val_margins], dim=-1)
+        all_margins[i] = joined_margins
+    torch.save(all_margins, oracle_margins_path)
+else:
+    print("oracle margins loaded from cache")
+    all_margins = torch.load(oracle_margins_path)
 pretrain_margins = pretrain_margins[:N, :] # (model_id, point_id)
-for i in tqdm(range(1,9)):
-    res = kl_from_margins(all_margins[i], pretrain_margins)
-    res_fgt = res[forget_indices[i]]
-    res_ret = res[[k for k in range(50_000) if k not in forget_indices[i]]]
-    res_val = res[50_000:]
-    print(f"FGT {i}:-------------")
-    print(f"klom forget: {np.percentile(res_fgt, 95)}")
-    print(f"klom retain: {np.percentile(res_ret, 95)}")
-    print(f"klom val: {np.percentile(res_val, 95)}")
+# do_nothing_test(all_margins, pretrain_margins)
+
+# RUN the test on the pretrain checkpoints to sanity check the get margins logic
+def load_pretrain_model(model_id):
+    pretrain_url = f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/sd_{model_id}____epoch_23.pt"
+    tensor_contents = load_tensor_from_hf(pretrain_url)
+    model = ResNet9().to("cuda")
+    model.load_state_dict(
+        {
+            k.removeprefix("model.").removeprefix("module."): v
+            for k, v in tensor_contents.items()
+        },
+        strict=True,
+    )
+    return model
+all_loader = get_cifar_dataloader(split="all")
+for n in tqdm(range(N), desc="computing pretrain margins"):
+    model = load_pretrain_model(n)
+    model_margins = get_margins(model, all_loader)
+    import pdb; pdb.set_trace()
