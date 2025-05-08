@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from datasets import get_cifar_dataloader
 
-def do_nothing_test(all_margins, pretrain_margins):
+def do_nothing_test(all_margins, pretrain_margins, forget_indices):
     for i in tqdm(range(1,9)):
         res = kl_from_margins(all_margins[i], pretrain_margins)
         res_fgt = res[forget_indices[i]]
@@ -33,7 +33,9 @@ N = 100
 forget_indices = {}
 all_margins = {}
 oracle_margins_path = tmp_dir / "oracle_margins.pt"
-if not os.path.exists(oracle_margins_path):
+forget_indices_path = tmp_dir / "forget_indices.pt"
+RECOMPUTE = False
+if not os.path.exists(oracle_margins_path) or RECOMPUTE:
     for i in tqdm(range(1,9)):
         forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
         train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
@@ -41,9 +43,11 @@ if not os.path.exists(oracle_margins_path):
         joined_margins = torch.cat([train_margins, val_margins], dim=-1)
         all_margins[i] = joined_margins
     torch.save(all_margins, oracle_margins_path)
+    torch.save(forget_indices, forget_indices_path)
 else:
     print("oracle margins loaded from cache")
     all_margins = torch.load(oracle_margins_path)
+    forget_indices = torch.load(forget_indices_path)
 pretrain_margins = pretrain_margins[:N, :] # (model_id, point_id)
 # do_nothing_test(all_margins, pretrain_margins)
 
@@ -61,7 +65,22 @@ def load_pretrain_model(model_id):
     )
     return model
 all_loader = get_cifar_dataloader(split="all")
+computed_pretrain_margins = []
+pretrained_margins_path = tmp_dir / "pretrained_margins.pt"
+if not os.path.exists(pretrained_margins_path):
+    for n in tqdm(range(N), desc="computing pretrain margins"):
+        model = load_pretrain_model(n)
+        model_margins = get_margins(model, all_loader)
+        computed_pretrain_margins.append(model_margins)
+    computed_pretrain_margins = torch.cat(computed_pretrain_margins).view(N, 60_000)
+    torch.save(computed_pretrain_margins, pretrained_margins_path)
+else:
+    computed_pretrain_margins = torch.load(pretrained_margins_path)
+assert computed_pretrain_margins.shape == (N, 60_000)
+pretrain_models = {}
 for n in tqdm(range(N), desc="computing pretrain margins"):
     model = load_pretrain_model(n)
-    model_margins = get_margins(model, all_loader)
-    import pdb; pdb.set_trace()
+    pretrain_models[n] = model
+pretrain_models_path = tmp_dir / "pretrain_models.pt"
+torch.save(pretrain_models, pretrain_models_path)
+# do_nothing_test(all_margins, computed_pretrain_margins, forget_indices)

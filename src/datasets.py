@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Subset
 
 
 def get_cifar_dataloader(
-    indices=None, split="train", shuffle=True, num_workers=8, batch_size: int = 256
+    indices=None, split="train", shuffle=False, num_workers=8, batch_size: int = 256
 ):
     assert indices is None or not isinstance(
         indices, set

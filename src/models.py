@@ -162,7 +162,6 @@ def load_from_url_hf(url: str, device: str = "cpu", mode: str = "margins"):
     )
     return model
 
-
 MODELS = {
     "resnet9": ResNet9,
 }

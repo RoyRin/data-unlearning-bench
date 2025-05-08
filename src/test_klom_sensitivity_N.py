@@ -1,87 +1,93 @@
-# stdlib deps
+import torch
+import io
+import requests
+from tqdm import tqdm
+import numpy as np
+from eval import kl_from_margins, get_margins
+from models import ResNet9
 import os
 from pathlib import Path
+from datasets import get_cifar_dataloader
 
-# project deps
-from unlearning import UNLEARNING_METHODS
-from datasets import DATASETS
-from models import MODELS
-from models import load_from_url_hf, get_urls_hf
-from eval import kl_from_margins
-from paths import FORGET_INDICES_DIR
+def do_nothing_test(all_margins, pretrain_margins, forget_indices, n_val):
+    fgt_values, ret_values, val_values = {}, {}, {}
+    for i in tqdm(range(1,9)):
+        res = kl_from_margins(all_margins[i][:n_val, :], pretrain_margins[:n_val, :])
+        res_fgt = res[forget_indices[i]]
+        res_ret = res[[k for k in range(50_000) if k not in forget_indices[i]]]
+        res_val = res[50_000:]
+        print(f"FGT {i}:-------------")
+        print(f"klom forget: {np.percentile(res_fgt, 95)}")
+        print(f"klom retain: {np.percentile(res_ret, 95)}")
+        print(f"klom val: {np.percentile(res_val, 95)}")
+        fgt_values[i] = res_fgt
+        ret_values[i] = res_ret
+        val_values[i] = res_val 
+    return {
+        "fgt": fgt_values,
+        "ret": ret_values,
+        "val": val_values,
+    }
 
-# third party deps
-import numpy as np
-from tqdm import tqdm
-
-ul_method = "do_nothing"
-assert (
-    ul_method in UNLEARNING_METHODS
-), f"method: {method} not found in {UNLEARNING_METHODS}"
-dataset = "cifar10"
-assert dataset in DATASETS, f"dataset: {dataset} not found in {DATASETS}"
-model = "resnet9"
-assert model in MODELS, f"model: {model} not found in {MODELS}"
-# reminder that pipeline not ready or tested
-if model != "resnet9" or dataset != "cifar10":
-    raise NotImplementedError(
-        "Current pipeline just supports resnet9 cifar10 since it relies on hf checkpoints"
-    )
-
-n_values = np.linspace(2, 200, 50, dtype=int).tolist()
 tmp_dir = Path("./tmp")
 os.makedirs(tmp_dir, exist_ok=True)
-# We preload to avoid issues with rate limits in requests to huggingface since if not rate limited it is not a bottleneck
-pretrain_margin_urls = [
-    "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt",
-    "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/val_margins_all.pt",
-]
-print("Preloading pretraining margins")
-preloaded_all_unlearn_margins = np.concatenate(
-    [load_from_url_hf(url=m) for m in pretrain_margin_urls], axis=1
-)
+load_tensor_from_hf = lambda url, timeout = 30, device = "cpu": torch.load(io.BytesIO(requests.get(url, timeout=timeout).content), map_location=device)
+get_oracle_margins_url = lambda forget_id, mode : f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracles/CIFAR10/only_margins/forget_set_{forget_id}/{mode}_margins_all.pt"
+load_npy_from_hf = lambda url: np.load(io.BytesIO(requests.get(url).content))
+get_forget_set_url = lambda forget_id: f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/forget_set_indices/CIFAR10/forget_set_{forget_id}.npy"
+pretrain_margins_train = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt")
+pretrain_margins_val = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/val_margins_all.pt")
+pretrain_margins = torch.cat([pretrain_margins_train, pretrain_margins_val], dim=-1)
+N = 100
+forget_indices = {}
+all_margins = {}
+oracle_margins_path = tmp_dir / "oracle_margins.pt"
+forget_indices_path = tmp_dir / "forget_indices.pt"
+RECOMPUTE = False
+if not os.path.exists(oracle_margins_path) or RECOMPUTE:
+    for i in tqdm(range(1,9)):
+        forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
+        train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
+        val_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "val"))[:N, :]
+        joined_margins = torch.cat([train_margins, val_margins], dim=-1)
+        all_margins[i] = joined_margins
+    torch.save(all_margins, oracle_margins_path)
+    torch.save(forget_indices, forget_indices_path)
+else:
+    print("oracle margins loaded from cache")
+    all_margins = torch.load(oracle_margins_path)
+    forget_indices = torch.load(forget_indices_path)
+pretrain_margins = pretrain_margins[:N, :] # (model_id, point_id)
+# do_nothing_test(all_margins, pretrain_margins)
 
-ff = [1, 2, 3, 4]
-for forget_id in tqdm(ff):
-    # As in pretrain margins, we preload to avoid issues with rate limits in requests to huggingface since if not rate limited it is not a bottleneck
-    print("Preloading oracle margins")
-    n_max = max(n_values)
-    oracle_margin_urls = get_urls_hf(
-        n_max, directory=f"oracles/CIFAR10/forget_set_{forget_id}"
+# RUN the test on the pretrain checkpoints to sanity check the get margins logic
+def load_pretrain_model(model_id):
+    pretrain_url = f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/sd_{model_id}____epoch_23.pt"
+    tensor_contents = load_tensor_from_hf(pretrain_url)
+    model = ResNet9().to("cuda")
+    model.load_state_dict(
+        {
+            k.removeprefix("model.").removeprefix("module."): v
+            for k, v in tensor_contents.items()
+        },
+        strict=True,
     )
-    # for now test on validation since the train split margins are not there yet --------
-    oracle_margin_urls = [oo for oo in oracle_margin_urls if "val" in oo]
-    assert len(oracle_margin_urls) == n_max, f"{len(oracle_margin_urls)}"
-    preloaded_max_oracle_margins = np.stack(
-        [load_from_url_hf(url=m) for m in oracle_margin_urls]
-    )
-    for N in tqdm(n_values, desc=f"Testing KLOM on N"):
-        klom_path = tmp_dir / f"klom_{N}_f{forget_id}.npy"
-        if os.path.exists(klom_path):
-            print(f"Skipping N -> {N}, already computed")
-            continue
-        print(f"Computing N -> {N}")
-        if ul_method == "do_nothing":
-            all_unlearn_margins = preloaded_all_unlearn_margins[:N, :]
-        else:
-            raise NotImplementedError("Method not implemented yet")
-            # forget_indices = np.load(FORGET_INDICES_DIR / dataset / f"forget_set_{forget_id}.npy")
-            # pretrain_model_urls = get_urls_hf(mode="models")
-            # all_pretrain_models_gen = (load_from_url_hf(url=m, mode="models") for m in pretrain_model_urls)
-            # TODO: load dataloaders, run unlearning, get margins into all_unlearn_margins
-        try:
-            assert (
-                all_unlearn_margins.shape[0] == N
-                and all_unlearn_margins.shape[1] == 60_000
-            )
-        except:
-            import pdb
+    return model
+all_loader = get_cifar_dataloader(split="all")
+computed_pretrain_margins = []
+pretrained_margins_path = tmp_dir / "pretrained_margins.pt"
+if not os.path.exists(pretrained_margins_path):
+    for n in tqdm(range(N), desc="computing pretrain margins"):
+        model = load_pretrain_model(n)
+        model_margins = get_margins(model, all_loader)
+        computed_pretrain_margins.append(model_margins)
+    computed_pretrain_margins = torch.cat(computed_pretrain_margins).view(N, 60_000)
+    torch.save(computed_pretrain_margins, pretrained_margins_path)
+else:
+    computed_pretrain_margins = torch.load(pretrained_margins_path)
 
-            pdb.set_trace()
-
-        # TODO get oracle margins
-        all_oracle_margins = preloaded_max_oracle_margins[:N, :]
-        all_unlearn_margins = all_unlearn_margins[:, 50_000:]
-        # ------------
-        res = kl_from_margins(all_unlearn_margins, all_oracle_margins)
-        np.save(klom_path, res)
+nn = np.linspace(2, N, 20, dtype=int)
+for n_val in tqdm(nn):
+    klom_path = tmp_dir / f"klom_{n_val}.pt"
+    res_out = do_nothing_test(all_margins, computed_pretrain_margins, forget_indices, n_val)
+    torch.save(res_out, klom_path)
