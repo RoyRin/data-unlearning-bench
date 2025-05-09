@@ -6,46 +6,95 @@ import argparse
 
 # project deps
 from eval import kl_from_margins, get_margins
-from datasets import get_cifar_dataloader
-from paths import ORACLES_DIR, check_hf_registry
+from datasets import DATASETS
+from paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry
 from config import load_config, check_config
-from unlearning import get_checkpoint_name
+from unlearning import get_checkpoint_name, UNLEARNING_METHODS, OPTIMIZERS
+from models import MODELS
 
 # external deps
-import requests
 import torch
 from tqdm import tqdm
 import numpy as np
 
+def load_try_local_then_huggingface(path, config, mode):
+    assert mode in ["pretrain_checkpoints", "oracle_margins", "forget_indices"]
+    if os.path.exists(path):
+        print(f"Loading {mode} from server")
+        contents = torch.load(path, map_location="cpu")
+        # maybe add a mode to compute the ones that are missing
+        assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']}"
+    else:
+        try:
+            print(f"Loading {mode} from huggingface")
+            contents = check_hf_registry(config, mode)
+            assert len(contents) >= config['N'], f"not enough {mode} in huggingface {len(contents)}/{config['N']}"
+            print(f"Saving {mode} from huggingface")
+            torch.save(contents, path)
+        except Exception as e:
+            print(e)
+            import pdb; pdb.set_trace()
+    return contents[:config['N']]
 
 def load_oracle_margins(config):
     oracle_margins_dir = ORACLES_DIR / config['dataset'] / config['model']
     os.makedirs(oracle_margins_dir, exist_ok=True)
     oracle_margins_path = oracle_margins_dir / f"oracle_margins_{config['forget_id']}.pt"
-    if os.path.exists(oracle_margins_path):
-        print("Loading oracle margins from server")
-        return torch.load(oracle_margins_path, map_location="cpu")
-    try:
-        print("Loading oracle margins from huggingface")
-        res = check_hf_registry(config, "oracle_margins")
-        print("Saving oracle margins from huggingface")
-        torch.save(res, oracle_margins_path)
-    except Exception as e:
-        print(e)
-        import pdb; pdb.set_trace()
-    return res
+    return load_try_local_then_huggingface(oracle_margins_path, config, "oracle_margins")
 
 def load_pretrain_checkpoints(config):
-    pretrain_checkpoints_dir = # TODO: continue here
+    pretrain_checkpoints_dir = CHECKPOINTS_DIR / config['dataset'] / config['model']
+    os.makedirs(pretrain_checkpoints_dir, exist_ok=True)
+    pretrain_checkpoints_path = pretrain_checkpoints_dir / "pretrain_checkpoints.pt"
+    return load_try_local_then_huggingface(pretrain_checkpoints_path, config, "pretrain_checkpoints")
+
+def load_forget_indices(config):
+    forget_indices_dir = FORGET_INDICES_DIR / config['dataset']
+    os.makedirs(forget_indices_dir, exist_ok=True)
+    forget_indices_path = forget_indices_dir / f"forget_indices_{config['forget_id']}.pt"
+    return load_try_local_then_huggingface(forget_indices_path, config, "forget_indices")
 
 def load_unlearning_margins(config):
     unlearning_margins_dir = MARGINS_DIR / config['dataset'] / config['model']
-    os.makedirs(oracle_margins_dir, exist_ok=True)
-    unlearning_margins_path = get_checkpoint_name(config, "margins")
+    os.makedirs(unlearning_margins_dir, exist_ok=True)
+    unlearning_margins_path = unlearning_margins_dir / get_checkpoint_name(config, "margins")
     if os.path.exists(unlearning_margins_path):
         print("Loading unlearning margins from server")
-        return torch.load(unlearning_margins_path, map_location="cpu")
-    # otherwise we compute them
+        contents = torch.load(unlearning_margins_path, map_location="cpu")
+        assert len(contents) >= config['N'], f"not enough margins in server {len(contents)}/{config['N']}"
+        return contents[:N]
+    # if not precomputed, we compute them
+    pretrain_models = load_pretrain_checkpoints(config)
+    forget_indices = load_forget_indices(config)
+    forget_loader = DATASETS[config['dataset']]['loader'](indices=forget_indices, batch_size=config['batch_size'])
+    retain_indices = [idx for idx in range(DATASETS[config['dataset']]['train_size']) if idx not in forget_indices]
+    retain_loader = DATASETS[config['dataset']]['loader'](indices=retain_indices, batch_size=config['batch_size'])
+    all_dataloader = DATASETS[config['dataset']]['loader'](split="all")
+    epoch_margins = {ep: [] for ep in config['epochs']} 
+    for model in tqdm(pretrain_models, desc="Getting unlearning margins"):
+        epoch_models = UNLEARNING_METHODS[config['unlearning_method']](model, forget_loader, retain_loader, OPTIMIZERS[config['optimizer']], optimizer_kwargs={"lr": config["lr"]}, epochs=config["epochs"])
+        for ep, unlearn_model in epoch_models.items():
+            unlearn_margins = get_margins(unlearn_model, all_dataloader)
+            epoch_margins[ep].append(unlearn_margins)
+        all_margins.append(unlearn_margins)
+    epoch_margins = {ep: torch.stack(ep_marg) for ep, ep_marg in epoch_margins.items()}
+    torch.save(epoch_margins, unlearning_margins_path)
+    return epoch_margins 
+
+def load_klom(config):
+    klom_dir = EVAL_DIR / config['dataset'] / config['model']
+    os.makedirs(klom_dir, exist_ok=True)
+    klom_path = klom_dir / get_checkpoint_name(config, "klom")
+    if os.path.exists(klom_path):
+        return torch.load(klom_path)
+    oracle_margins = load_oracle_margins(config)
+    epoch_margins = load_unlearning_margins(config)
+    epoch_kloms = {}
+    for ep, margins in epoch_margins.items():
+        res = kl_from_margins(oracle_margins, margins)
+        epoch_kloms[ep] = res
+    torch.save(epoch_kloms, klom_path)
+    return epoch_kloms
 
 parser = argparse.ArgumentParser(description="Run gradient ascent unlearning with a config file.")
 parser.add_argument(
@@ -57,95 +106,4 @@ parser.add_argument(
 args = parser.parse_args()
 config = load_config(args.c)
 check_config(config)
-# check if the oracle margins exist in server for the specified model and dataset
-oracle_margins = load_oracle_margins(config)
-unlearning_margins = load_unlearning_margins(config)
-# check if the unlearning margins for the config already exist
-# if not check if the pretrain checkpoints exist in server
-# if not check if hf, get them and save to server
-
-assert 1 == 0
-
-
-def do_nothing_test(all_margins, pretrain_margins, forget_indices, n_val):
-    fgt_values, ret_values, val_values = {}, {}, {}
-    for i in tqdm(range(1,9)):
-        res = kl_from_margins(all_margins[i][:n_val, :], pretrain_margins[:n_val, :])
-        res_fgt = res[forget_indices[i]]
-        res_ret = res[[k for k in range(50_000) if k not in forget_indices[i]]]
-        res_val = res[50_000:]
-        print(f"FGT {i}:-------------")
-        print(f"klom forget: {np.percentile(res_fgt, 95)}")
-        print(f"klom retain: {np.percentile(res_ret, 95)}")
-        print(f"klom val: {np.percentile(res_val, 95)}")
-        fgt_values[i] = res_fgt
-        ret_values[i] = res_ret
-        val_values[i] = res_val 
-    return {
-        "fgt": fgt_values,
-        "ret": ret_values,
-        "val": val_values,
-    }
-
-tmp_dir = Path("./tmp")
-os.makedirs(tmp_dir, exist_ok=True)
-load_tensor_from_hf = lambda url, timeout = 30, device = "cpu": torch.load(io.BytesIO(requests.get(url, timeout=timeout).content), map_location=device)
-get_oracle_margins_url = lambda forget_id, mode : f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracles/CIFAR10/only_margins/forget_set_{forget_id}/{mode}_margins_all.pt"
-load_npy_from_hf = lambda url: np.load(io.BytesIO(requests.get(url).content))
-get_forget_set_url = lambda forget_id: f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/forget_set_indices/CIFAR10/forget_set_{forget_id}.npy"
-pretrain_margins_train = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/train_margins_all.pt")
-pretrain_margins_val = load_tensor_from_hf("https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/val_margins_all.pt")
-pretrain_margins = torch.cat([pretrain_margins_train, pretrain_margins_val], dim=-1)
-N = 100
-forget_indices = {}
-all_margins = {}
-oracle_margins_path = tmp_dir / "oracle_margins.pt"
-forget_indices_path = tmp_dir / "forget_indices.pt"
-RECOMPUTE = False
-if not os.path.exists(oracle_margins_path) or RECOMPUTE:
-    for i in tqdm(range(1,9)):
-        forget_indices[i] = load_npy_from_hf(url=get_forget_set_url(i))
-        train_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "train"))[:N, :]
-        val_margins = load_tensor_from_hf(url=get_oracle_margins_url(i, "val"))[:N, :]
-        joined_margins = torch.cat([train_margins, val_margins], dim=-1)
-        all_margins[i] = joined_margins
-    torch.save(all_margins, oracle_margins_path)
-    torch.save(forget_indices, forget_indices_path)
-else:
-    print("oracle margins loaded from cache")
-    all_margins = torch.load(oracle_margins_path)
-    forget_indices = torch.load(forget_indices_path)
-pretrain_margins = pretrain_margins[:N, :] # (model_id, point_id)
-# do_nothing_test(all_margins, pretrain_margins)
-
-# RUN the test on the pretrain checkpoints to sanity check the get margins logic
-def load_pretrain_model(model_id):
-    pretrain_url = f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/full_models/CIFAR10/sd_{model_id}____epoch_23.pt"
-    tensor_contents = load_tensor_from_hf(pretrain_url)
-    model = ResNet9().to("cuda")
-    model.load_state_dict(
-        {
-            k.removeprefix("model.").removeprefix("module."): v
-            for k, v in tensor_contents.items()
-        },
-        strict=True,
-    )
-    return model
-all_loader = get_cifar_dataloader(split="all")
-computed_pretrain_margins = []
-pretrained_margins_path = tmp_dir / "pretrained_margins.pt"
-if not os.path.exists(pretrained_margins_path):
-    for n in tqdm(range(N), desc="computing pretrain margins"):
-        model = load_pretrain_model(n)
-        model_margins = get_margins(model, all_loader)
-        computed_pretrain_margins.append(model_margins)
-    computed_pretrain_margins = torch.cat(computed_pretrain_margins).view(N, 60_000)
-    torch.save(computed_pretrain_margins, pretrained_margins_path)
-else:
-    computed_pretrain_margins = torch.load(pretrained_margins_path)
-
-nn = np.linspace(2, N, 20, dtype=int)
-for n_val in tqdm(nn):
-    klom_path = tmp_dir / f"klom_{n_val}.pt"
-    res_out = do_nothing_test(all_margins, computed_pretrain_margins, forget_indices, n_val)
-    torch.save(res_out, klom_path)
+klom = load_klom(config)

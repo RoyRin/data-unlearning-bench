@@ -1,9 +1,0 @@
-unlearning_method: ascent_forget 
-lr: 0.001
-epochs: 10
-dataset: cifar10
-optimizer: sgd
-model: resnet9
-N: 100
-forget_id: 9
-batch_size: 64

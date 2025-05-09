@@ -3,6 +3,9 @@ from pathlib import Path
 import os
 import io
 
+# project deps
+from models import MODELS
+
 # third party deps
 import requests
 import torch
@@ -18,6 +21,8 @@ CONFIG_DIR = REPO_DIR / "config"
 os.makedirs(CONFIG_DIR, exist_ok=True)
 MARGINS_DIR = DATA_DIR / "margins"
 os.makedirs(MARGINS_DIR, exist_ok=True)
+CHECKPOINTS_DIR = DATA_DIR / "checkpoints"
+os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 FORGET_INDICES_DIR = DATA_DIR / "forget_set_indices"
 os.makedirs(FORGET_INDICES_DIR, exist_ok=True)
 ORACLES_DIR = DATA_DIR / "oracles"
@@ -27,24 +32,52 @@ BASE_HF_REQ_URL = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/ma
 HF_REGISTRY = {
     "oracle_margins": {
         "cifar10": {
-            "resnet9": lambda forget_id: [f"oracles/CIFAR10/only_margins/forget_set_{forget_id}/{mode}_margins_all.pt" for mode in ["train", "val"]],
-        }
-    }
+            "resnet9": lambda config: [f"oracles/CIFAR10/only_margins/forget_set_{config['forget_id']}/{mode}_margins_all.pt" for mode in ["train", "val"]],
+        },
+    },
+    "forget_indices": {
+        "cifar10": lambda config: [f"forget_set_indices/CIFAR10/forget_set_{config['forget_id']}.npy"],
+    },
+    "pretrain_checkpoints": {
+        "cifar10": {
+            "resnet9": lambda config: [f"full_models/CIFAR10/sd_{nn}____epoch_23.pt" for nn in range(config['N'])]
+        }, 
+    },
 }
 
 def check_hf_registry(config, mode):
-    assert mode in HF_REGISTRY, "{mode} not in {HF_REGISTRY.keys()}"
+    assert mode in HF_REGISTRY, f"{mode} not in {HF_REGISTRY.keys()}"
     assert config['dataset'] in HF_REGISTRY[mode], "dataset not in {HF_REGISTRY[mode].keys()}"
-    assert config['model'] in HF_REGISTRY[mode][config['dataset']], "model not in {HF_REGISTRY[mode][config['dataset']]}"
-    urls_to_check = HF_REGISTRY[mode][config['dataset']][config['model']](config['forget_id'])
+    assert mode=="forget_indices" or config['model'] in HF_REGISTRY[mode][config['dataset']], "model not in {HF_REGISTRY[mode][config['dataset']]}"
+    if mode == "forget_indices":
+        urls_to_check = HF_REGISTRY[mode][config['dataset']](config)
+    else:
+        urls_to_check = HF_REGISTRY[mode][config['dataset']][config['model']](config)
     all_contents = []
     for url in urls_to_check:
         req_url  = BASE_HF_REQ_URL + url
         out = requests.get(req_url, timeout=30).content
         if url.endswith(".pt"):
-            contents = torch.load(io.BytesIO(out), map_location="cpu")
+            try:
+                contents = torch.load(io.BytesIO(out), map_location="cpu")
+            except:
+                import pdb; pdb.set_trace()
+            if "checkpoints" in mode:
+                model = MODELS[config['model']]()
+                if config['model'] == "resnet9":
+                    contents = { k.removeprefix("model.").removeprefix("module."): v
+                    for k, v in contents.items()}
+                try:
+                    model.load_state_dict(
+                            contents,
+                            strict=True,
+                        )
+                    contents = model
+                except:
+                    import pdb; pdb.set_trace()
         elif url.endswith(".npy"):
             contents = np.load(io.BytesIO(out))
+            if mode == "forget_indices": return contents
         else:
             raise NotImplementedError(f"support for {req_url} termination not implemented")
         all_contents.append(contents)
