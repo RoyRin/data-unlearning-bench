@@ -85,5 +85,14 @@ if __name__=="__main__":
             "epochs": [1],
             **default_params
     }
-    generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
-    generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
+    scrub_configs = {
+            "unlearning_method": ["scrub"],
+            "lr": [5e-3, 1e-3, 5e-4, 5e-5],
+            "epochs": [5, 7, 10],
+            "ascent_epochs": [3, 5],
+            "forget_batch_size": [32, 64],
+            **default_params
+    }
+    # generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
+    # generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
+    generate_configs(scrub_configs, CONFIG_DIR, ["epochs"])

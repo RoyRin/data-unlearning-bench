@@ -68,13 +68,14 @@ def load_unlearning_margins(config):
     # if not precomputed, we compute them
     pretrain_models = load_pretrain_checkpoints(config)
     forget_indices = load_forget_indices(config)
-    forget_loader = DATASETS[config['dataset']]['loader'](indices=forget_indices, batch_size=config['batch_size'])
+    assert config['unlearning_method'] != 'scrub' or 'forget_batch_size' in config, f"forget_batch_size is required in config, current keys {config.keys()}"
+    forget_loader = DATASETS[config['dataset']]['loader'](indices=forget_indices, batch_size=config['batch_size'] if "forget_batch_size" not in config else config['forget_batch_size'])
     retain_indices = [idx for idx in range(DATASETS[config['dataset']]['train_size']) if idx not in forget_indices]
     retain_loader = DATASETS[config['dataset']]['loader'](indices=retain_indices, batch_size=config['batch_size'])
     all_dataloader = DATASETS[config['dataset']]['loader'](split="all")
     epoch_margins = {ep: [] for ep in config['epochs']} 
     for model in tqdm(pretrain_models, desc="Getting unlearning margins"):
-        epoch_models = UNLEARNING_METHODS[config['unlearning_method']](model, forget_loader, retain_loader, OPTIMIZERS[config['optimizer']], optimizer_kwargs={"lr": config["lr"]}, epochs=config["epochs"])
+        epoch_models = UNLEARNING_METHODS[config['unlearning_method']](model, forget_loader, retain_loader, OPTIMIZERS[config['optimizer']], optimizer_kwargs={"lr": config["lr"]}, **config)
         for ep, unlearn_model in epoch_models.items():
             unlearn_margins = get_margins(unlearn_model, all_dataloader)
             epoch_margins[ep].append(unlearn_margins)
