@@ -29,10 +29,8 @@ def ascent_forget(
 ):
     model = model.train().to(device)
     optimizer = optimizer_cls(model.parameters(), **optimizer_kwargs)
-    # this could be made more efficient by computing margins on the fly
-    # but looses simplicity and flexibility to compute other metrics
     epoch_models = {}
-    for it in range(max(epochs)):
+    for it in range(1, max(epochs)+1):
         for idx, (x, y) in enumerate(forget_loader):
             x, y = x.to(device), y.to(device)
             out = model(x)
@@ -41,6 +39,9 @@ def ascent_forget(
             (-loss).backward()
             optimizer.step()
         if it in epochs:
+            # this could be made more efficient by computing margins on the fly
+            # but looses simplicity and flexibility to compute other metrics
+            # for resnet9 it takes around 0.07s to execute
             epoch_models[it] = deepcopy(model)
     return epoch_models
 

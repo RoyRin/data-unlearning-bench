@@ -23,12 +23,14 @@ def load_try_local_then_huggingface(path, config, mode):
         print(f"Loading {mode} from server")
         contents = torch.load(path, map_location="cpu")
         # maybe add a mode to compute the ones that are missing
-        assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']}"
+        if mode!="forget_indices":
+            assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']}"
     else:
         try:
             print(f"Loading {mode} from huggingface")
             contents = check_hf_registry(config, mode)
-            assert len(contents) >= config['N'], f"not enough {mode} in huggingface {len(contents)}/{config['N']}"
+            if mode!="forget_indices":
+                assert len(contents) >= config['N'], f"not enough {mode} in huggingface {len(contents)}/{config['N']}"
             print(f"Saving {mode} from huggingface")
             torch.save(contents, path)
         except Exception as e:
@@ -76,7 +78,6 @@ def load_unlearning_margins(config):
         for ep, unlearn_model in epoch_models.items():
             unlearn_margins = get_margins(unlearn_model, all_dataloader)
             epoch_margins[ep].append(unlearn_margins)
-        all_margins.append(unlearn_margins)
     epoch_margins = {ep: torch.stack(ep_marg) for ep, ep_marg in epoch_margins.items()}
     torch.save(epoch_margins, unlearning_margins_path)
     return epoch_margins 
@@ -86,6 +87,7 @@ def load_klom(config):
     os.makedirs(klom_dir, exist_ok=True)
     klom_path = klom_dir / get_checkpoint_name(config, "klom")
     if os.path.exists(klom_path):
+        print("Results for this config already exist")
         return torch.load(klom_path)
     oracle_margins = load_oracle_margins(config)
     epoch_margins = load_unlearning_margins(config)

@@ -69,7 +69,7 @@ if __name__=="__main__":
             "optimizer": ["sgd"],
             "model": ["resnet9"],
             "N": [100],
-            "forget_id": [i for i in range(1,10)],
+            "forget_id": [4, 6],
             "batch_size": [64],
             "dataset": ["cifar10"]
     }
