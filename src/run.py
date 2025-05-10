@@ -63,8 +63,8 @@ def load_unlearning_margins(config):
     if os.path.exists(unlearning_margins_path):
         print("Loading unlearning margins from server")
         contents = torch.load(unlearning_margins_path, map_location="cpu")
-        assert len(contents) >= config['N'], f"not enough margins in server {len(contents)}/{config['N']}"
-        return contents[:N]
+        assert all(len(contents[k]) >= config['N'] for k in contents), f"not enough margins in server {len(contents)}/{config['N']}"
+        return {k: contents[k][:config['N']] for k in contents}
     # if not precomputed, we compute them
     pretrain_models = load_pretrain_checkpoints(config)
     forget_indices = load_forget_indices(config)

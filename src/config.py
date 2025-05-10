@@ -69,7 +69,7 @@ if __name__=="__main__":
             "optimizer": ["sgd"],
             "model": ["resnet9"],
             "N": [100],
-            "forget_id": [4, 6],
+            "forget_id": [1, 2, 4, 6, 7, 8, 9],
             "batch_size": [64],
             "dataset": ["cifar10"]
     }
@@ -79,4 +79,11 @@ if __name__=="__main__":
             "epochs": [1, 3, 5, 7, 10],
             **default_params
     }
+    do_nothing_configs = {
+            "unlearning_method": ["do_nothing"],
+            "lr": [10000.0],
+            "epochs": [1],
+            **default_params
+    }
     generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
+    generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
