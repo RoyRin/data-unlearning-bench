@@ -115,7 +115,6 @@ def scrub_new(
     device: str = "cuda",
     **kwargs,
 ):
-    assert "kl_distillation_loss" in kwargs, "scrub_new requires distillation loss in the config"
     assert "ascent_epochs" in kwargs, "scrub requires ascent epochs in the config"
     cls_loss_fn = loss_fn
     gamma = 0.99
