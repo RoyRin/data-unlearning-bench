@@ -4,6 +4,7 @@ from typing import Dict, List
 
 # third party deps
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 
 def do_nothing(
@@ -58,7 +59,6 @@ def scrub(
     device: str = "cuda",
     **kwargs,
 ):
-    # based on https://arxiv.org/pdf/2302.09880 section 3.1 last paragraph
     assert "ascent_epochs" in kwargs, "scrub requires ascent epochs in the config"
     ascent_epochs = kwargs["ascent_epochs"]
     m = m.train().to(device)
@@ -86,6 +86,72 @@ def scrub(
             # for resnet9 it takes around 0.07s to execute
             epoch_models[it] = deepcopy(m)
     return epoch_models
+
+def adjust_learning_rate(epoch, lr_decay_epochs, lr_decay_rate, sgda_learning_rate, optimizer):
+    """Sets the learning rate to the initial LR decayed by decay rate every steep step"""
+    steps = np.sum(epoch > np.asarray(lr_decay_epochs))
+    new_lr = sgda_learning_rate
+    if steps > 0:
+        new_lr = sgda_learning_rate * (lr_decay_rate**steps)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = new_lr
+    return new_lr
+
+def scrub_new(
+    m,
+    forget_loader,
+    retain_loader,
+    optimizer_cls: torch.optim.Optimizer,
+    optimizer_kwargs: Dict,
+    epochs: List[int],
+    loss_fn=torch.nn.functional.cross_entropy,
+    device: str = "cuda",
+    **kwargs,
+):
+    assert "kl_distillation_loss" in kwargs, "scrub_new requires distillation loss in the config"
+    assert "ascent_epochs" in kwargs, "scrub requires ascent epochs in the config"
+    assert "lr_decay_epochs" in kwargs, "scrub requires lr_decay_epochs in the config"
+    assert "lr_decay_rate" in kwargs, "scrub requires lr_decay_rate in the config"
+    assert "sgda_learning_rate" in kwargs, "scrub requires sgda_learning_rate in the config"
+    assert "sstart" in kwargs, "scrub requires sstart in the config"
+    kl_loss_fn = kwargs["kl_distillation_loss"]
+    cls_loss_fn = loss_fn
+    gamma = 0.99
+    alpha = 0.1
+    lr_decay_epochs = [3, 5, 9]
+    lr_decay_rate = 0.1
+    unlearn_model = deepcopy(m)
+    m, unlearn_model = m.eval().to(device), unlearn_model.train().to(device)
+    optimizer = optimizer_cls(m.parameters(), **optimizer_kwargs)
+    epoch_models = {}
+    for epoch in range(1, max(epochs)+1):
+        lr = adjust_learning_rate(epoch, lr_decay_epochs, lr_decay_rate, optimizer_kwargs["lr"], optimizer)
+        if epoch <= kwargs["ascent_epochs"]:
+            for idx, (x, y) in enumerate(forget_loader):
+                x, y = x.to(device), y.to(device)
+                logit_s = unlearn_model(x)
+                with torch.no_grad(): # already set to eval but just to be safe
+                    logit_t = m(x)
+                # max step on the KL loss
+                loss = - kl_loss_fn(logit_s, logit_t)
+                # no param dist since args.smoothing was 0
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+        for idx, (x, y) in enumerate(retain_loader):
+                x, y = x.to(device), y.to(device)
+                logit_s = unlearn_model(x)
+                with torch.no_grad(): # already set to eval but just to be safe
+                    logit_t = m(x)
+                # min step on gamma * cls_loss + alpha * kl_loss (since the kd term is set to zero)
+                loss_cls = cls_loss_fn(logit_s, y)
+                loss_div = kl_loss_fn(logit_s, logit_t)
+                loss = gamma * loss_cls + alpha * loss_div
+                # no param dist since args.smoothing was 0
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+        # no need to swa update since args.smoothing was 0
 
 # TODO: later on if N > than the available margins then compute as many as necessary
 def get_checkpoint_name(config, mode):
