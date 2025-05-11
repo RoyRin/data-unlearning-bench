@@ -32,7 +32,7 @@ BASE_HF_REQ_URL = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/ma
 HF_REGISTRY = {
     "oracle_margins": {
         "cifar10": {
-            "resnet9": lambda config: [f"oracles/CIFAR10/only_margins/forget_set_{config['forget_id']}/{mode}_margins_all.pt" for mode in ["train", "val"]],
+            "resnet9": lambda config: [f"oracle_models/CIFAR10/only_margins/forget_set_{config['forget_id']}/{mode}_margins_all.pt" for mode in ["train", "val"]],
         },
     },
     "forget_indices": {
@@ -75,6 +75,8 @@ def check_hf_registry(config, mode):
                     contents = model
                 except:
                     import pdb; pdb.set_trace()
+            elif mode == "oracle_margins":
+                contents = contents[:config['N'], :]
         elif url.endswith(".npy"):
             contents = np.load(io.BytesIO(out))
             if mode == "forget_indices": return contents

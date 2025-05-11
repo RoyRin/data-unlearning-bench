@@ -23,6 +23,19 @@ def to_np_cpu(x):
 
         pdb.set_trace()
 
+def get_margins_from_multimodel_logits(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    device: str = "cuda",
+) -> torch.Tensor:
+    logits, labels = logits.to(device), labels.to(device)
+    assert logits.dim() == 3
+    n_models, n_datapoints, n_classes = logits.shape
+    one_hot = torch.nn.functional.one_hot(labels, num_classes=n_classes).bool()
+    one_hot = one_hot.unsqueeze(0).expand(n_models, -1, -1)
+    logits_correct = logits[one_hot].view(n_models, n_datapoints)
+    lse_other = logits.masked_fill(one_hot, -torch.inf).logsumexp(dim=-1)
+    return logits_correct - lse_other
 
 def get_margin(
     model: torch.nn.Module,
