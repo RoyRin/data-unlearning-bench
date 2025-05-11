@@ -32,22 +32,23 @@ ch.backends.cudnn.benchmark = True
 ch.autograd.profiler.emit_nvtx(False)
 ch.autograd.profiler.profile(False)
 
-# Constants and configurations can be added here
 
-ROOT = "/mnt/xfs/datasets/living17"
-TRAIN_PATH = "living17_tr.beton"
-VAL_PATH = "living17_val.beton"
-TRAIN_TENSORS_PATH = "raw_tensors_tr_new.pt"
-VAL_TENSORS_PATH = "raw_tensors_val_new.pt"
+# Constants and configurations can be added here
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) * 255
 IMAGENET_STD = np.array([0.229, 0.224, 0.225]) * 255
 DEFAULT_CROP_RATIO = 224 / 256
 NUM_TRAIN = 88_400 // 2
 
-if False: # example to show how to load the raw tensors
+
+if False:
+    from unlearning import LIVING17_ROOT
+
+    TRAIN_TENSORS_PATH = "raw_tensors_tr_new.pt"
+    VAL_TENSORS_PATH = "raw_tensors_val_new.pt"
+    # example to show how to load the raw tensors
     raw_tensors = ch.load(
-        os.path.join(ROOT, TRAIN_TENSORS_PATH if split == "train" else VAL_TENSORS_PATH)
+        os.path.join(LIVING17_ROOT, TRAIN_TENSORS_PATH if split == "train" else VAL_TENSORS_PATH)
     )
 
 class ConcatLoader:

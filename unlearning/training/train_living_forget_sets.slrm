@@ -1,0 +1,50 @@
+#!/bin/sh
+#SBATCH --job-name=retrain-living17-forget
+#SBATCH --array=0-39
+#SBATCH --partition=kempner_requeue
+#SBATCH --gres=gpu:1
+#SBATCH --mem=80G
+#SBATCH -t 0-72:00
+#SBATCH -c 1
+#SBATCH --output=/n/home04/rrinberg/catered_out/klom/living17-forget-%A__%a.out
+#SBATCH --mail-user=royrinberg@gmail.com  
+#SBATCH --mail-type=ALL
+#SBATCH --account kempner_emalach_lab
+
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+
+module load python/3.10.12-fasrc01
+
+module load intelpython/3.9.16-fasrc01
+module load cuda cudnn
+
+
+
+# Calculate which forget set and model this job should run
+# We have 4 cases (1, 2, 3, 4) and 10 models per case
+# So total of 40 jobs (0-39)
+FORGET_SET_ID=$((SLURM_ARRAY_TASK_ID / 10 + 1))  # +1 to start from forget set 1
+MODEL_ID=$((SLURM_ARRAY_TASK_ID % 10))
+
+# Set forget set argument
+FORGET_ARG="--unlearning.forget_set_id $FORGET_SET_ID"
+
+# Activate conda environment
+source ~/.bashrc
+conda activate ffcv
+
+# Run the training script
+cd /n/home04/rrinberg/code/data-unlearning-bench
+python unlearning/training/train_living.py \
+    $FORGET_ARG \
+    --training.batch_size 1024 \
+    --training.epochs 25 \
+    --model_id_offset $MODEL_ID
+
+# Print job info
+echo "Running forget set $FORGET_SET_ID, model $MODEL_ID"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node: $SLURM_NODELIST" 

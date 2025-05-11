@@ -171,3 +171,19 @@ models/
 For contributions, feel free to create a pull-request. And for questions, feel invited to reach out to the corresponding authors on the paper.
 
 Note, there are many assets associated this paper (original models, oracles, and datamodels), pelase reach out if there are difficulties reproducing them
+
+
+
+# Running Living17 benchmarks from scratch
+
+You will need to install FFCV (https://ffcv.io/)
+
+To do so 
+```
+conda create -n ffcv python=3.9 cupy pkg-config libjpeg-turbo opencv pytorch torchvision cudatoolkit=11.6 numba -c conda-forge -c pytorch && conda activate ffcv && conda update ffmpeg && pip install ffcv
+                
+```
+pyyaml
+requests
+fastarg
+torchmetrics 
