@@ -165,11 +165,11 @@ def save_logits_and_margins(model, ckpt_dir, model_num, epoch):
                                                      indexed=True)
     val_targets = val_dataloader_unshuffled.dataset.original_dataset.targets
     val_logits = get_logits(model, val_dataloader_unshuffled)
-    val_logits_path = ckpt_dir / f"{model_num}__val_logits_{epoch}.pt"
+    val_logits_path = ckpt_dir / f"{model_num}__val_logits__{epoch}.pt"
     torch.save(val_logits, val_logits_path)
     print(f"saved logits to {val_logits_path}")
     val_margins = get_margins(val_targets, val_logits)
-    val_margins_path = ckpt_dir / f"{model_num}__val_margins_{epoch}.npy"
+    val_margins_path = ckpt_dir / f"{model_num}__val_margins__{epoch}.npy"
     np.save(val_margins_path, val_margins)
     print(f"saved margins to {val_margins_path}")
 

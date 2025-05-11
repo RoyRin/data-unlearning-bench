@@ -1,4 +1,4 @@
-import submitit
+
 from pathlib import Path
 import numpy as np
 import torch as ch
@@ -218,41 +218,6 @@ def get_oracle_paths(dataset, forget_set_id, splits=["train", "val"]):
     ]
     return oracle_ckpt_0_path, oracle_logit_paths, oracle_margins_paths
 
-
-def get_executor(tmp_subfolder=""):
-    tmp_folder = LOG_DIR
-    if len(tmp_subfolder) > 0:
-        tmp_folder = tmp_folder / tmp_subfolder
-    print(f"Writing to {tmp_folder}")
-    tmp_folder.mkdir(parents=True, exist_ok=True)
-    gres = {"gres": f"gpu:a100:1"}
-    executor = submitit.AutoExecutor(tmp_folder)
-    executor.update_parameters(
-        slurm_partition="",
-        timeout_min=50,
-        slurm_cpus_per_task=8,
-        slurm_additional_parameters=gres,
-    )
-    return executor
-
-
-def submit_job(executor, fn, args, batch=False):
-    jobs = []
-    if batch:
-        N_args = len(args[0])
-        batch_args = []
-        for i in range(N_args):
-            batch_args.append([args[j][i] for j in range(len(args))])
-        jobs = executor.map_array(fn, *batch_args)
-    else:
-        this_job = executor.submit(
-            fn,
-            *args,
-        )
-        jobs.extend([this_job])
-
-    print("Remaining jobs: ", len(jobs))
-    return jobs
 
 
 def train_one_cifar10_resnet9(

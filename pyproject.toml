@@ -1,16 +1,15 @@
 [tool.poetry]
-name = "unlearning-with-trak"
+name = "unlearning-bench"
 version = "0.1.0"
 description = ""
-authors = [""]
+authors = ["Roy Rinberg <royrinberg@gmail.com>"]
 
 readme = "README.md"
 
 
 packages = [
 	{include = "unlearning"},
-	{include = "plotting"},
-	#{include = "trak"}
+
 ]
 
 [tool.poetry.dependencies]
@@ -23,14 +22,17 @@ tqdm = "^4.66.2"
 torchvision = "^0.17.1"
 scikit-learn = "^1.4.1.post1"
 pandas = "^2.2.1"
-traker = "^0.3.2"
-pickleshare = "^0.7.5"
+
 seaborn = "^0.13.2"
 jupyter-black = "^0.3.4"
-opacus = "^1.4.1"
-submitit = "^1.5.1"
-transformers = "^4.40.2"
-tiktoken = "^0.6.0"
+
+
+#traker = "^0.3.2"
+#pickleshare = "^0.7.5"
+#opacus = "^1.4.1"
+#submitit = "^1.5.1"
+#transformers = "^4.40.2"
+#tiktoken = "^0.6.0"
 
 
 # terminaltables

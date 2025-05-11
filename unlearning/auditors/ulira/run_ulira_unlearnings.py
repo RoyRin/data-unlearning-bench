@@ -325,7 +325,6 @@ dm_direct_config = {
     },
     "only_direct_eval": False,
     "run_direct_eval": True,
-    "use_submitit_for_direct_eval": False,
     "N_models_for_direct": 200,
 }
 
@@ -350,7 +349,6 @@ dm_matching_config = {
     },
     "run_direct_eval": True,
     "only_direct_eval": False,
-    "use_submitit_for_direct_eval": False,
     "N_models_for_direct": 200,
 }
 

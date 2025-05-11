@@ -4,8 +4,8 @@ dm_scores_path = Path(
     f"regression_v2/all_logit_vitaly_infls_denoised.npy")  # datamodels path
 
 BASE_DIR = Path(
-    "unlearning/precomputed_models")  # where precomputed models lie
-ORACLE_BASE_DIR = Path(f"unlearning/precomputed_models/oracles/"
+    "/n/home04/rrinberg/data_dir__holylabs/unlearning/precomputed_models/")  # where precomputed models lie
+ORACLE_BASE_DIR = Path(f"/n/home04/rrinberg/data_dir__holylabs/unlearning/precomputed_models/oracles/"
                        )  # where oracles (retrained models) lie
 if not BASE_DIR.exists():
     print(f"Was not able to find precomputed_models directory in {BASE_DIR}")
