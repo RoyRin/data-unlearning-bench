@@ -5,7 +5,7 @@ from typing import Dict, List
 # third party deps
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 def do_nothing(
     m,
@@ -97,6 +97,13 @@ def adjust_learning_rate(epoch, lr_decay_epochs, lr_decay_rate, sgda_learning_ra
             param_group['lr'] = new_lr
     return new_lr
 
+def distill_kl_loss(y_s, y_t, T):
+    """Distilling the Knowledge in a Neural Network"""
+    p_s = F.log_softmax(y_s / T, dim=1)
+    p_t = F.softmax(y_t / T, dim=1)
+    loss = F.kl_div(p_s, p_t, reduction='batchmean') * (T**2)
+    return loss
+
 def scrub_new(
     m,
     forget_loader,
@@ -110,16 +117,12 @@ def scrub_new(
 ):
     assert "kl_distillation_loss" in kwargs, "scrub_new requires distillation loss in the config"
     assert "ascent_epochs" in kwargs, "scrub requires ascent epochs in the config"
-    assert "lr_decay_epochs" in kwargs, "scrub requires lr_decay_epochs in the config"
-    assert "lr_decay_rate" in kwargs, "scrub requires lr_decay_rate in the config"
-    assert "sgda_learning_rate" in kwargs, "scrub requires sgda_learning_rate in the config"
-    assert "sstart" in kwargs, "scrub requires sstart in the config"
-    kl_loss_fn = kwargs["kl_distillation_loss"]
     cls_loss_fn = loss_fn
     gamma = 0.99
     alpha = 0.1
     lr_decay_epochs = [3, 5, 9]
     lr_decay_rate = 0.1
+    kd_T = 4
     unlearn_model = deepcopy(m)
     m, unlearn_model = m.eval().to(device), unlearn_model.train().to(device)
     optimizer = optimizer_cls(m.parameters(), **optimizer_kwargs)
@@ -133,7 +136,7 @@ def scrub_new(
                 with torch.no_grad(): # already set to eval but just to be safe
                     logit_t = m(x)
                 # max step on the KL loss
-                loss = - kl_loss_fn(logit_s, logit_t)
+                loss = -distill_kl_loss(logit_s, logit_t, kd_T)
                 # no param dist since args.smoothing was 0
                 optimizer.zero_grad()
                 loss.backward()
@@ -145,7 +148,7 @@ def scrub_new(
                     logit_t = m(x)
                 # min step on gamma * cls_loss + alpha * kl_loss (since the kd term is set to zero)
                 loss_cls = cls_loss_fn(logit_s, y)
-                loss_div = kl_loss_fn(logit_s, logit_t)
+                loss_div = distill_kl_loss(logit_s, logit_t, kd_T)
                 loss = gamma * loss_cls + alpha * loss_div
                 # no param dist since args.smoothing was 0
                 optimizer.zero_grad()
