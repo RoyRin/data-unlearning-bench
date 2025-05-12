@@ -183,7 +183,10 @@ To do so
 conda create -n ffcv python=3.9 cupy pkg-config libjpeg-turbo opencv pytorch torchvision cudatoolkit=11.6 numba -c conda-forge -c pytorch && conda activate ffcv && conda update ffmpeg && pip install ffcv
                 
 ```
-pyyaml
-requests
-fastarg
-torchmetrics 
+extra imports required:
+```
+    pyyaml
+    requests
+    fastarg
+    torchmetrics  
+```

@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH --job-name=retrain-living17-forget
-#SBATCH --array=0-39
+#SBATCH --array=0-39  # 4 forget sets × 10 machines
 #SBATCH --partition=kempner_requeue
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
@@ -14,13 +14,19 @@
 # Create logs directory if it doesn't exist
 mkdir -p logs
 
+# Calculate which forget set and machine this job is for
+FORGET_SET_ID=$((SLURM_ARRAY_TASK_ID / 10 + 1))  # 1-4
+MACHINE_ID=$((SLURM_ARRAY_TASK_ID % 10))         # 0-9
 
-module load python/3.10.12-fasrc01
+# Calculate model indices for this machine
+# Each machine trains 10 models
+IDX_START=$((MACHINE_ID * 10))
+N_MODELS=10
 
-module load intelpython/3.9.16-fasrc01
-module load cuda cudnn
+echo "Running job for forget set $FORGET_SET_ID on machine $MACHINE_ID"
+echo "Training models $IDX_START to $((IDX_START + N_MODELS - 1))"
 
-
+export LD_LIBRARY_PATH=/n/holylabs/LABS/vadhan_lab/Lab/rrinberg/envs/ffcv/lib:$LD_LIBRARY_PATH
 
 # Calculate which forget set and model this job should run
 # We have 4 cases (1, 2, 3, 4) and 10 models per case
@@ -33,18 +39,24 @@ FORGET_ARG="--unlearning.forget_set_id $FORGET_SET_ID"
 
 # Activate conda environment
 source ~/.bashrc
+
+module load python/3.10.12-fasrc01
+
+module load intelpython/3.9.16-fasrc01
+module load cuda cudnn
+
+
 conda activate ffcv
 
-# Run the training script
-cd /n/home04/rrinberg/code/data-unlearning-bench
-python unlearning/training/train_living.py \
-    $FORGET_ARG \
-    --training.batch_size 1024 \
-    --training.epochs 25 \
-    --model_id_offset $MODEL_ID
+cd /n/home04/rrinberg/code/data-unlearning-bench/unlearning/training
 
-# Print job info
-echo "Running forget set $FORGET_SET_ID, model $MODEL_ID"
-echo "Job ID: $SLURM_JOB_ID"
-echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
-echo "Node: $SLURM_NODELIST" 
+# Run the training script with fastargs parameters
+python train_living.py \
+    --unlearning.forget_set_id $FORGET_SET_ID \
+    --unlearning.idx_start $IDX_START \
+    --unlearning.n_models $N_MODELS \
+    --unlearning.model_id_offset 0 \
+    --training.batch_size 1024 \
+    --training.epochs 25
+
+echo "Job completed successfully" 

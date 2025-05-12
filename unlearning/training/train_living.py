@@ -70,7 +70,8 @@ except Exception as e:
 
 import fastargs
 
-from unlearning import LIVING17_ROOT
+from unlearning import LIVING17_ROOT, LIVING17_ORACLE_MODELS, LIVING17_FULL_MODELS
+
 print(fastargs.__file__)
 
 Section("model", "model details").params(
@@ -132,6 +133,13 @@ Section("training", "training hyper param stuff").params(
     epochs=Param(int, "number of epochs", default=25),
     label_smoothing=Param(float, "label smoothing parameter", default=0.1),
     use_blurpool=Param(int, "use blurpool?", default=0),
+)
+
+Section("unlearning", "unlearning parameters").params(
+    forget_set_id=Param(int, "ID of the forget set", default=None),
+    idx_start=Param(int, "Starting index for model IDs", default=0),
+    n_models=Param(int, "Number of models to train on this machine", default=1),
+    model_id_offset=Param(int, "Offset to add to model ID when saving", default=0),
 )
 
 
@@ -600,7 +608,7 @@ def wrapper_for_train_living17_on_subset_submitit(
     should_save_train_logits: bool = False,
     should_save_val_logits: bool = False,
     model_id_offset: int = 0,
-    checkpoint_epochs=[-1],
+    checkpoint_epochs=[ 24],
 ):
     """
     - masks_path gives the path to a np array of shape [K, train_set_size],
@@ -665,19 +673,30 @@ if __name__ == "__main__":
     config.augment_argparse(parser)
     config.collect_argparse_args(parser)
     config.validate()  # Initialize config with defaults
+    
     forget_set_id = config["unlearning.forget_set_id"]
+    idx_start = config["unlearning.idx_start"]
+    n_models = config["unlearning.n_models"]
+    model_id_offset = config["unlearning.model_id_offset"]
+    
     print(f"forget_set_id - {forget_set_id}")
+    print(f"idx_start - {idx_start}")
+    print(f"n_models - {n_models}")
+    print(f"model_id_offset - {model_id_offset}")
+    
     if forget_set_id is not None:
         SAVE_DIR = LIVING17_ORACLE_MODELS / f"forget_set_{forget_set_id}"
     else:
         SAVE_DIR = LIVING17_FULL_MODELS
+    # make sure the directory exists
+    SAVE_DIR.mkdir(parents=True, exist_ok=True)
     
     wrapper_for_train_living17_on_subset_submitit(
         forget_set_id=forget_set_id,
-        idx_start=0,
-        n_models=1,
+        idx_start=idx_start,
+        n_models=n_models,
         ckpt_dir=SAVE_DIR,
         should_save_train_logits=True,
         should_save_val_logits=True,
-        model_id_offset=0,
+        model_id_offset=model_id_offset,
     )
