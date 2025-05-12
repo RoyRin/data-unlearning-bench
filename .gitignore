@@ -5,3 +5,4 @@ tmp/
 cifar-10-batches-py/
 data/cifar-10-python.tar.gz
 config/
+data/living17/

@@ -104,7 +104,7 @@ def distill_kl_loss(y_s, y_t, T):
     loss = F.kl_div(p_s, p_t, reduction='batchmean') * (T**2)
     return loss
 
-def scrub_new(
+def scrubnew(
     m,
     forget_loader,
     retain_loader,
@@ -154,6 +154,13 @@ def scrub_new(
                 loss.backward()
                 optimizer.step()
         # no need to swa update since args.smoothing was 0
+        
+        if epoch in epochs:
+            # this could be made more efficient by computing margins on the fly
+            # but looses simplicity and flexibility to compute other metrics
+            # for resnet9 it takes around 0.07s to execute
+            epoch_models[epoch] = deepcopy(unlearn_model) # student
+    return epoch_models
 
 # TODO: later on if N > than the available margins then compute as many as necessary
 def get_checkpoint_name(config, mode):
@@ -165,8 +172,8 @@ def get_checkpoint_name(config, mode):
             name = f"do_nothing__f{config['forget_id']}_{mode}"
     elif config['unlearning_method'] == "ascent_forget":
         name = f"ascent_forget__lr_{config['lr']}__ep_{config['epochs']}__f{config['forget_id']}__bs{config['batch_size']}__{mode}"
-    elif config['unlearning_method'] == "scrub":
-        name = f"scrub__lr_{config['lr']}__ep_{config['epochs']}__f{config['forget_id']}__bs{config['batch_size']}__ascent_epochs{config['ascent_epochs']}__{mode}"
+    elif config['unlearning_method'] == "scrub" or config['unlearning_method'] == "scrubnew":
+        name = f"{config['unlearning_method']}__lr_{config['lr']}__ep_{config['epochs']}__f{config['forget_id']}__bs{config['batch_size']}__ascent_epochs{config['ascent_epochs']}__{mode}"
     else:
         raise NotImplementedError(f"config {config['unlearning_method']} not implemented")
     if mode == "klom":
@@ -178,6 +185,7 @@ UNLEARNING_METHODS = {
     "do_nothing": do_nothing,
     "ascent_forget": ascent_forget,
     "scrub": scrub,
+    "scrubnew": scrubnew,
 }
 
 OPTIMIZERS = {

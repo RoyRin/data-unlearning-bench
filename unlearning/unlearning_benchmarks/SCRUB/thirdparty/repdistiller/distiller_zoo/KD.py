@@ -17,3 +17,10 @@ class DistillKL(nn.Module):
         loss = F.kl_div(p_s, p_t, size_average=False) * (self.T**
                                                          2) / y_s.shape[0]
         return loss
+
+def distill_kl_loss(y_s, y_t, T):
+    """Distilling the Knowledge in a Neural Network"""
+    p_s = F.log_softmax(y_s / T, dim=1)
+    p_t = F.softmax(y_t / T, dim=1)
+    loss = F.kl_div(p_s, p_t, reduction='batchmean') * (T**2)
+    return loss

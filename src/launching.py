@@ -6,11 +6,12 @@ def main():
     p.add_argument("--gpus", required=True)
     p.add_argument("--jobs-per-gpu", type=int, default=1)
     p.add_argument("--output", default="launch_jobs.sh")
+    p.add_argument("--method", default=None)
     a = p.parse_args()
 
     gpus = [int(x) for x in a.gpus.split(",") if x]
     gpu_jobs = {g: [] for g in gpus}
-    queue = sorted([f for f in CONFIG_DIR.iterdir() if f.suffix == ".yml"])
+    queue = sorted([f for f in CONFIG_DIR.iterdir() if (f.suffix == ".yml" and (a.method is None or a.method in f.name))])
     for i, cfg in enumerate(queue):
         gpu_jobs[gpus[i % len(gpus)]].append(cfg.name)
 

@@ -18,6 +18,7 @@ def get_cifar_dataloader(
         "val",
         "all",
     ], "split must be one of ['train', 'val', 'all']"
+    assert indices is None or split != "train", "indices must be None for split='train'"
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -25,7 +26,6 @@ def get_cifar_dataloader(
         ]
     )
     if split == "all":
-        assert indices is None, "indices must be None for split='all'"
         train_dataset = datasets.CIFAR10(
             root=DATA_DIR, train=True, download=True, transform=transform
         )
@@ -44,11 +44,34 @@ def get_cifar_dataloader(
     )
     return dataloader
 
+def get_living17_dataloader(
+    indices=None, split="train", shuffle=False, num_workers=8, batch_size: int = 256
+):
+    assert split in ["train", "val", "all"], "split must be one of ['train', 'val', 'all']"
+    assert indices is None or not isinstance(
+        indices, set
+    ), "indices must be a sequence (list/tuple), not a set"
+    assert indices is None or split != "train", "indices must be None for split='train'"
+    train_tensors_filename = "raw_tensors_tr_new.pt"
+    val_tensors_filename = "raw_tensors_val_new.pt"
+    raw_tensors = torch.load(DATA_DIR / "living17" / (train_tensors_filename if split == "train" else val_tensors_filename))
+    dataset = torch.utils.data.TensorDataset(*raw_tensors)
+    if split == "train" and indices is not None:
+        dataset = Subset(dataset, indices)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
+    )
+    return dataloader
 
 DATASETS = {
     "cifar10": {
         "loader": get_cifar_dataloader,
         "train_size": 50_000,
+        "val_size": 10_000,
+    },
+    "living17": {
+        "loader": get_living17_dataloader,
+        "train_size": 44_200,
         "val_size": 10_000,
     }
 }

@@ -69,13 +69,13 @@ if __name__=="__main__":
             "optimizer": ["sgd"],
             "model": ["resnet9"],
             "N": [100],
-            "forget_id": [3,5],
+            "forget_id": [i for i in range(1, 10)],
             "batch_size": [64],
             "dataset": ["cifar10"]
     }
     ascent_configs = {
             "unlearning_method": ["ascent_forget"],
-            "lr": [1e-5, 1e-3, 1e-2],
+            "lr": [1e-5, 5e-4, 1e-4, 5e-5, 1e-3, 5e-2, 1e-2],
             "epochs": [1, 3, 5, 7, 10],
             **default_params
     }
@@ -93,6 +93,15 @@ if __name__=="__main__":
             "forget_batch_size": [32, 64],
             **default_params
     }
-    # generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
-    # generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
+    scrubnew_configs = {
+            "unlearning_method": ["scrubnew"],
+            "lr": [5e-3, 1e-3, 5e-4, 5e-5],
+            "epochs": [5, 7, 10],
+            "ascent_epochs": [3, 5],
+            "forget_batch_size": [32, 64],
+            **default_params
+    }
+    generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
+    generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
     generate_configs(scrub_configs, CONFIG_DIR, ["epochs"])
+    generate_configs(scrubnew_configs, CONFIG_DIR, ["epochs"])
