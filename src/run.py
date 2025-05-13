@@ -1,6 +1,4 @@
 # stdlib deps
-import io
-from pathlib import Path
 import os
 import argparse
 
@@ -10,12 +8,10 @@ from datasets import DATASETS
 from paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry
 from config import load_config, check_config
 from unlearning import get_checkpoint_name, UNLEARNING_METHODS, OPTIMIZERS
-from models import MODELS
 
 # external deps
 import torch
 from tqdm import tqdm
-import numpy as np
 
 def load_try_local_then_huggingface(path, config, mode):
     assert mode in ["pretrain_checkpoints", "oracle_margins", "forget_indices"]

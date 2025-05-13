@@ -62,7 +62,7 @@ def ResNet9(num_classes=10, channels_last=True):
 def ResNet18(num_classes=10, pretrained=False, channels_last=True, ckpt_path=None):
     weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
     m = torchvision.models.resnet18(weights=weights)
-    m.fc = torch.nn.Linear(m.fc.in_features, num_classes, bias=False)
+    m.fc = torch.nn.Linear(m.fc.in_features, num_classes, bias=True)
 
     if ckpt_path is not None:
         state = torch.load(ckpt_path, map_location="cpu")

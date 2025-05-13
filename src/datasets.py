@@ -8,6 +8,7 @@ from paths import DATA_DIR
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Subset
+import torchvision.transforms as transforms
 
 
 def get_cifar_dataloader(
@@ -91,23 +92,6 @@ def get_living17_dataloader(
 
     if indices is not None:
         dataset = Subset(dataset, indices)
-
-    # ImageNet normalisation that ResNet18 expects
-    imagenet_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
-
-    class ApplyNorm(torch.utils.data.Dataset):
-        def __init__(self, base_ds):
-            self.base = base_ds
-        def __len__(self): return len(self.base)
-        def __getitem__(self, i):
-            x, y = self.base[i]          # x is uint8
-            if x.ndim == 3 and x.shape[0] == 3:        # already C×H×W
-                x = x.float().div_(255)
-            else:                                       # H×W×C → C×H×W
-                x = x.permute(2, 0, 1).float().div_(255)
-            return imagenet_norm(x), y
-    dataset = ApplyNorm(dataset)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
 DATASETS = {
@@ -115,10 +99,12 @@ DATASETS = {
         "loader": get_cifar_dataloader,
         "train_size": 50_000,
         "val_size": 10_000,
+        "num_classes": 10,
     },
     "living17": {
         "loader": get_living17_dataloader,
         "train_size": 44_200,
         "val_size": 3400,
-    }
+        "num_classes": 17,
+    },
 }

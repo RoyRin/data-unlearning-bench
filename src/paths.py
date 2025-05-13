@@ -41,7 +41,10 @@ HF_REGISTRY = {
     "pretrain_checkpoints": {
         "cifar10": {
             "resnet9": lambda config: [f"full_models/CIFAR10/sd_{nn}____epoch_23.pt" for nn in range(config['N'])]
-        }, 
+        },
+        "living17": {
+            "resnet18": lambda config: [f"full_models/LIVING17/sd_{nn}____epoch_24.pt" for nn in range(config['N'])]
+        },
     },
 }
 
@@ -63,7 +66,8 @@ def check_hf_registry(config, mode):
             except:
                 import pdb; pdb.set_trace()
             if "checkpoints" in mode:
-                model = MODELS[config['model']]()
+                assert config['dataset'] in ["living17", "cifar10"], "dataset not in {['living17', 'cifar10']}"
+                model = MODELS[config['model']](num_classes=17 if config['dataset'] == "living17" else 10)
                 if config['model'] == "resnet9":
                     contents = { k.removeprefix("model.").removeprefix("module."): v
                     for k, v in contents.items()}
