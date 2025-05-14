@@ -34,9 +34,13 @@ HF_REGISTRY = {
         "cifar10": {
             "resnet9": lambda config: [f"oracle_models/CIFAR10/only_margins/forget_set_{config['forget_id']}/{mode}_margins_all.pt" for mode in ["train", "val"]],
         },
+        "living17": {
+            "resnet18": lambda config: [f"oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/{mode}_margins_all.pt" for mode in ["train", "val"]],
+        },
     },
     "forget_indices": {
         "cifar10": lambda config: [f"forget_set_indices/CIFAR10/forget_set_{config['forget_id']}.npy"],
+        "living17": lambda config: [f"forget_set_indices/LIVING17/forget_set_{config['forget_id']}.npy"],
     },
     "pretrain_checkpoints": {
         "cifar10": {

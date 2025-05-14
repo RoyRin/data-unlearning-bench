@@ -63,9 +63,7 @@ def generate_configs(configs_dict, configs_dir, list_keys):
     print(f"Generated {counter} configs")
 
 if __name__=="__main__":
-    # from C3 https://arxiv.org/pdf/2410.23232
-    # Gradient Ascent: Optimized with SGD. Learning rates: {1e-5, 1e-3, 1e-2}. Epochs: {1, 3, 5, 7, 10}
-    default_params = {
+    cifar_params = {
             "optimizer": ["sgd"],
             "model": ["resnet9"],
             "N": [100],
@@ -73,17 +71,23 @@ if __name__=="__main__":
             "batch_size": [64],
             "dataset": ["cifar10"]
     }
+    living_params = {
+            "optimizer": ["sgd"],
+            "model": ["resnet18"],
+            "N": [100],
+            "forget_id": [i for i in range(1, 6)],
+            "batch_size": [64],
+            "dataset": ["living17"]
+    }
     ascent_configs = {
             "unlearning_method": ["ascent_forget"],
             "lr": [1e-5, 5e-4, 1e-4, 5e-5, 1e-3, 5e-2, 1e-2],
             "epochs": [1, 3, 5, 7, 10],
-            **default_params
     }
     do_nothing_configs = {
             "unlearning_method": ["do_nothing"],
             "lr": [10000.0],
             "epochs": [1],
-            **default_params
     }
     scrub_configs = {
             "unlearning_method": ["scrub"],
@@ -91,7 +95,6 @@ if __name__=="__main__":
             "epochs": [5, 7, 10],
             "ascent_epochs": [3, 5],
             "forget_batch_size": [32, 64],
-            **default_params
     }
     scrubnew_configs = {
             "unlearning_method": ["scrubnew"],
@@ -99,9 +102,14 @@ if __name__=="__main__":
             "epochs": [5, 7, 10],
             "ascent_epochs": [3, 5],
             "forget_batch_size": [32, 64],
-            **default_params
     }
-    generate_configs(ascent_configs, CONFIG_DIR, ["epochs"])
-    generate_configs(do_nothing_configs, CONFIG_DIR, ["epochs"])
-    generate_configs(scrub_configs, CONFIG_DIR, ["epochs"])
-    generate_configs(scrubnew_configs, CONFIG_DIR, ["epochs"])
+    # cifar_configs
+    generate_configs({**ascent_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**do_nothing_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**scrub_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**scrubnew_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
+    # living configs 
+    generate_configs({**ascent_configs, **living_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**do_nothing_configs, **living_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**scrub_configs, **living_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**scrubnew_configs, **living_params}, CONFIG_DIR, ["epochs"])

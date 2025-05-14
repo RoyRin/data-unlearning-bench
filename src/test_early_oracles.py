@@ -16,7 +16,7 @@ def load_try_local_then_huggingface(path, config, mode):
         contents = torch.load(path, map_location="cpu")
         # maybe add a mode to compute the ones that are missing
         if mode!="forget_indices":
-            assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']}"
+            assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']} for forget_set {config['forget_id']}"
     else:
         try:
             print(f"Loading {mode} from huggingface")

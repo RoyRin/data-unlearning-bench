@@ -20,7 +20,7 @@ model = check_hf_registry({
 # ---------------------------------------------------------------------
 # data
 # ---------------------------------------------------------------------
-val_loader = DATASETS["living17_new"]["loader"](
+val_loader = DATASETS["living17"]["loader"](
     split="val",
     shuffle=False,
     batch_size=BATCH_SIZE,
@@ -47,3 +47,24 @@ with torch.no_grad():
 
 top1 = correct / total * 100
 print(f"ResNet-18 | Living-17 val accuracy: {top1:.2f}%")
+
+# test on the train set
+train_loader = DATASETS["living17"]["loader"](
+    split="train",
+    shuffle=False,
+    batch_size=BATCH_SIZE,
+    num_workers=4,
+)
+
+correct, total = 0, 0
+with torch.no_grad():
+    for x, y in tqdm(train_loader, desc="training"):
+        x, y = x.to(DEVICE), y.to(DEVICE)
+        with torch.autocast("cuda"):
+            logits = model(x)
+        preds  = logits.argmax(1)
+        correct += (preds == y).sum().item()
+        total   += y.size(0)
+
+top1 = correct / total * 100
+print(f"ResNet-18 | Living-17 train accuracy: {top1:.2f}%")

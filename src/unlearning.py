@@ -36,7 +36,11 @@ def ascent_forget(
     for it in range(1, max(epochs)+1):
         for idx, (x, y) in enumerate(forget_loader):
             x, y = x.to(device), y.to(device)
-            out = m(x)
+            if x.dtype == torch.float16:
+                with torch.autocast("cuda", dtype=torch.float16):
+                    out = m(x)
+            else:
+                out = m(x)
             loss = loss_fn(out, y)
             optimizer.zero_grad()
             (-loss).backward()
@@ -68,14 +72,22 @@ def scrub(
         if it <= ascent_epochs:
             for idx, (x, y) in enumerate(forget_loader):
                 x, y = x.to(device), y.to(device)
-                out = m(x)
+                if x.dtype == torch.float16:
+                    with torch.autocast("cuda", dtype=torch.float16):
+                        out = m(x)
+                else:
+                    out = m(x)
                 loss = loss_fn(out, y)
                 optimizer.zero_grad()
                 (-loss).backward()
                 optimizer.step()
         for idx, (x, y) in enumerate(retain_loader):
             x, y = x.to(device), y.to(device)
-            out = m(x)
+            if x.dtype == torch.float16:
+                with torch.autocast("cuda", dtype=torch.float16):
+                    out = m(x)
+            else:
+                out = m(x)
             loss = loss_fn(out, y)
             optimizer.zero_grad()
             loss.backward()
@@ -131,9 +143,17 @@ def scrubnew(
         if epoch <= kwargs["ascent_epochs"]:
             for idx, (x, y) in enumerate(forget_loader):
                 x, y = x.to(device), y.to(device)
-                logit_s = unlearn_model(x)
+                if x.dtype == torch.float16:
+                    with torch.autocast("cuda", dtype=torch.float16):
+                        logit_s = unlearn_model(x)
+                else:
+                    logit_s = unlearn_model(x)
                 with torch.no_grad(): # already set to eval but just to be safe
-                    logit_t = m(x)
+                    if x.dtype == torch.float16:
+                        with torch.autocast("cuda", dtype=torch.float16):
+                            logit_t = m(x)
+                    else:
+                        logit_t = m(x)
                 # max step on the KL loss
                 loss = -distill_kl_loss(logit_s, logit_t, kd_T)
                 # no param dist since args.smoothing was 0
@@ -142,9 +162,17 @@ def scrubnew(
                 optimizer.step()
         for idx, (x, y) in enumerate(retain_loader):
                 x, y = x.to(device), y.to(device)
-                logit_s = unlearn_model(x)
+                if x.dtype == torch.float16:
+                    with torch.autocast("cuda", dtype=torch.float16):
+                        logit_s = unlearn_model(x)
+                else:
+                    logit_s = unlearn_model(x)
                 with torch.no_grad(): # already set to eval but just to be safe
-                    logit_t = m(x)
+                    if x.dtype == torch.float16:
+                        with torch.autocast("cuda", dtype=torch.float16):
+                            logit_t = m(x)
+                    else:
+                        logit_t = m(x)
                 # min step on gamma * cls_loss + alpha * kl_loss (since the kd term is set to zero)
                 loss_cls = cls_loss_fn(logit_s, y)
                 loss_div = distill_kl_loss(logit_s, logit_t, kd_T)

@@ -20,7 +20,7 @@ def load_try_local_then_huggingface(path, config, mode):
         contents = torch.load(path, map_location="cpu")
         # maybe add a mode to compute the ones that are missing
         if mode!="forget_indices":
-            assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']}"
+            assert len(contents) >= config['N'], f"not enough {mode} in server {len(contents)}/{config['N']} for forget_id {config['forget_id']}"
     else:
         try:
             print(f"Loading {mode} from huggingface")
@@ -68,16 +68,37 @@ def load_unlearning_margins(config):
     forget_loader = DATASETS[config['dataset']]['loader'](indices=forget_indices, batch_size=config['batch_size'] if "forget_batch_size" not in config else config['forget_batch_size'])
     retain_indices = [idx for idx in range(DATASETS[config['dataset']]['train_size']) if idx not in forget_indices]
     retain_loader = DATASETS[config['dataset']]['loader'](indices=retain_indices, batch_size=config['batch_size'])
-    all_dataloader = DATASETS[config['dataset']]['loader'](split="all")
+    train_loader = DATASETS[config['dataset']]['loader'](split="train")
+    val_loader = DATASETS[config['dataset']]['loader'](split="val")
     epoch_margins = {ep: [] for ep in config['epochs']} 
     for model in tqdm(pretrain_models, desc="Getting unlearning margins"):
         epoch_models = UNLEARNING_METHODS[config['unlearning_method']](model, forget_loader, retain_loader, OPTIMIZERS[config['optimizer']], optimizer_kwargs={"lr": config["lr"]}, **config)
         for ep, unlearn_model in epoch_models.items():
-            unlearn_margins = get_margins(unlearn_model, all_dataloader)
+            unlearn_margins_tr = get_margins(unlearn_model, train_loader)
+            unlearn_margins_val = get_margins(unlearn_model, val_loader)
+            unlearn_margins = torch.cat([unlearn_margins_tr, unlearn_margins_val], dim=-1)
+            try:
+                assert len(unlearn_margins.shape) == 1 and unlearn_margins.shape[0] == DATASETS[config['dataset']]['train_size'] + DATASETS[config['dataset']]['val_size']
+            except:
+                import pdb; pdb.set_trace()
             epoch_margins[ep].append(unlearn_margins)
     epoch_margins = {ep: torch.stack(ep_marg) for ep, ep_marg in epoch_margins.items()}
     torch.save(epoch_margins, unlearning_margins_path)
-    return epoch_margins 
+    return epoch_margins
+
+def adapt_living17_shapes(config, margins):
+    import io; import requests;
+    oracle_train_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/train_margins_all.pt").content)).shape[1]
+    oracle_val_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/train_margins_all.pt").content)).shape[1]
+    train_len = DATASETS[config['dataset']]["train_size"]
+    val_len = DATASETS[config['dataset']]["val_size"]
+    try:
+        assert  oracle_train_len + oracle_val_len >= 0.9 * (train_len + val_len)
+        assert oracle_val_len == val_len
+    except Exception as e:
+        print(e) 
+    indices = list(range(0, oracle_train_len)) + list(range(train_len, train_len + val_len))
+    return margins[:, indices]
 
 def load_klom(config):
     klom_dir = EVAL_DIR / config['dataset'] / config['model']
@@ -90,8 +111,14 @@ def load_klom(config):
     epoch_margins = load_unlearning_margins(config)
     epoch_kloms = {}
     for ep, margins in epoch_margins.items():
-        res = kl_from_margins(oracle_margins, margins)
-        epoch_kloms[ep] = res
+        try:
+            if config['dataset'] == 'living17': # TODO: remove patch
+                margins = adapt_living17_shapes(config, margins)
+            res = kl_from_margins(oracle_margins, margins)
+            epoch_kloms[ep] = res
+        except Exception as e:
+            print(e)
+            import pdb; pdb.set_trace()
     torch.save(epoch_kloms, klom_path)
     return epoch_kloms
 

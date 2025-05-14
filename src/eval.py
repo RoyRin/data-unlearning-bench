@@ -63,9 +63,12 @@ def get_margins(
     model = model.to(device).eval()
     all_margins = []
     with torch.no_grad():
-        for idx, (x, y) in enumerate(loader):
+        for x, y in loader:
             x, y = x.to(device), y.to(device)
-            with torch.amp.autocast("cuda"):
+            if x.dtype == torch.float16:
+                with torch.amp.autocast("cuda"):
+                    margins = get_margin(model, x, y)
+            else:
                 margins = get_margin(model, x, y)
             all_margins.append(margins.cpu())
     return torch.cat(all_margins)

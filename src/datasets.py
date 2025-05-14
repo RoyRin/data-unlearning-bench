@@ -71,9 +71,9 @@ def get_living17_dataloader(
 def get_living17_dataloader(
     indices=None, split="train", shuffle: bool = False, num_workers: int = 8, batch_size: int = 256
 ):
-    assert split in {"train", "val", "all"}
+    assert split in {"train", "val"}
     assert indices is None or not isinstance(indices, set)
-    assert indices is None or split != "train"
+    assert indices is None or split == "train"
 
     root = Path(DATA_DIR) / "living17"
     tr_file = root / "raw_tensors_tr_new.pt"
@@ -87,8 +87,6 @@ def get_living17_dataloader(
         dataset = load_tensor_dataset(tr_file)
     elif split == "val":
         dataset = load_tensor_dataset(va_file)
-    else:  # "all"
-        dataset = torch.utils.data.ConcatDataset([load_tensor_dataset(tr_file), load_tensor_dataset(va_file)])
 
     if indices is not None:
         dataset = Subset(dataset, indices)
