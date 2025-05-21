@@ -86,17 +86,22 @@ def load_unlearning_margins(config):
     torch.save(epoch_margins, unlearning_margins_path)
     return epoch_margins
 
-def adapt_living17_shapes(config, margins):
+def get_living17_shapes(config):
     import io; import requests;
     oracle_train_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/train_margins_all.pt").content)).shape[1]
-    oracle_val_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/train_margins_all.pt").content)).shape[1]
+    oracle_val_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{config['forget_id']}/val_margins_all.pt").content)).shape[1]
+    return oracle_train_len, oracle_val_len
+
+def adapt_living17_shapes(config, margins):
+    oracle_train_len, oracle_val_len = get_living17_shapes(config)
     train_len = DATASETS[config['dataset']]["train_size"]
     val_len = DATASETS[config['dataset']]["val_size"]
     try:
         assert  oracle_train_len + oracle_val_len >= 0.9 * (train_len + val_len)
         assert oracle_val_len == val_len
     except Exception as e:
-        print(e) 
+        print(e)
+        import pdb; pdb.set_trace()
     indices = list(range(0, oracle_train_len)) + list(range(train_len, train_len + val_len))
     return margins[:, indices]
 

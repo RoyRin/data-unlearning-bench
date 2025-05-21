@@ -1,4 +1,6 @@
-import argparse, os
+import argparse
+import os
+from pathlib import Path
 from paths import CONFIG_DIR
 
 def main():
@@ -10,24 +12,46 @@ def main():
     args = p.parse_args()
 
     gpus = [int(x) for x in args.gpus.split(",") if x]
-    filters = [str(x) for x in args.filters.split(",") if x]
-    gpu_jobs = {g: [] for g in gpus}
-    queue = sorted([f for f in CONFIG_DIR.iterdir() if (f.suffix == ".yml" and (args.filters is None or all([filters[i] in f.name for i in range(len(filters))])))])
-    for i, cfg in enumerate(queue):
-        gpu_jobs[gpus[i % len(gpus)]].append(cfg.name)
+    filters = [x for x in (args.filters or "").split(",") if x]
 
-    lines = ["#!/usr/bin/env bash", "set -e"]
+    gpu_jobs = {g: [] for g in gpus}
+    queue = sorted(
+        f for f in CONFIG_DIR.iterdir()
+        if f.suffix == ".yml"
+        and (not filters or all(filt in f.name for filt in filters))
+    )
+    for i, cfg in enumerate(queue):
+        gpu = gpus[i % len(gpus)]
+        gpu_jobs[gpu].append(cfg.name)
+
+    script_path = Path(args.output)
+    base = script_path.stem
+    log_file = f"pdb_{base}.txt"
+
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -e",
+        f'LOG_FILE="{log_file}"',
+        ': > "$LOG_FILE"',
+        ""
+    ]
+
     for g in gpus:
         jobs = gpu_jobs[g]
         if not jobs:
             continue
         lines.append("(")
-        for i, cfg in enumerate(jobs, 1):
-            lines.append(f"CUDA_VISIBLE_DEVICES={g} python run.py --c {cfg} &")
-            if i % args.jobs_per_gpu == 0 or i == len(jobs):
+        for idx, cfg in enumerate(jobs, start=1):
+            cmd = f'CUDA_VISIBLE_DEVICES={g} python run.py --c {cfg}'
+            wrapped = (
+                f'CMD="{cmd}"\n'
+                f'$CMD 2>&1 | tee >(grep -q "(Pdb)" && echo "$CMD" >> "$LOG_FILE")'
+            )
+            lines.append(wrapped + " &")
+            if idx % args.jobs_per_gpu == 0 or idx == len(jobs):
                 lines.append("wait")
         lines.append(") &")
-    lines.append("wait\n")
+    lines.append("wait")
 
     with open(args.output, "w") as f:
         f.write("\n".join(lines))
