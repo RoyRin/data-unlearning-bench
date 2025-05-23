@@ -5,6 +5,8 @@ import torch
 import numpy as np
 from pathlib import Path
 import pandas as pd
+from paths import get_living17_shapes
+from tqdm import tqdm
 
 selected_datasets = ["living17", "cifar10"]
 model_dicts = {
@@ -50,8 +52,16 @@ def parse_method_fname(fname):
         ascent_epochs = int(ascent_epochs.split("ascent_epochs")[1])
     return method, lr, ep, fset, bs, n, ascent_epochs
 
-def parse_klom_fname(fname, KLOM_PATH, forget_indices, retain_indices, val_indices, TOTAL_EPOCHS, dataset_name):
+def get_indices(train_size, val_size, forget_indices):
+    retain_indices = {i: [k for k in range(train_size) if k not in forget_indices[i]] for i in forget_indices}
+    val_indices = [k for k in range(train_size, train_size+val_size)]
+    return retain_indices, val_indices
+
+def parse_klom_fname(fname, KLOM_PATH, TOTAL_EPOCHS, dataset_name, forget_indices):
     method, lr, ep, fset, bs, n, ascent_epochs = parse_method_fname(fname)
+    train_size = TRAIN_SIZES[dataset_name][fset]
+    val_size = VAL_SIZES[dataset_name][fset]
+    retain_indices, val_indices = get_indices(train_size, val_size, forget_indices)
     res = torch.load(KLOM_PATH / fname)
     rows = []
     for e_id, klom in res.items():
@@ -90,7 +100,22 @@ def parse_klom_fname(fname, KLOM_PATH, forget_indices, retain_indices, val_indic
         )
     return rows
 
+TRAIN_SIZES = {}
+VAL_SIZES = {}
+contents = []
+
 for dataset_name in selected_datasets:
+    TRAIN_SIZES[dataset_name] = {}
+    VAL_SIZES[dataset_name] = {}
+    print("Loading sizes for", dataset_name)
+    for fset in forgetset_dicts[dataset_name]:
+        if dataset_name == "living17":
+            oracle_train_len, oracle_val_len = get_living17_shapes(fset)
+            TRAIN_SIZES[dataset_name][fset] = oracle_train_len
+            VAL_SIZES[dataset_name][fset] = oracle_val_len
+        else:
+            TRAIN_SIZES[dataset_name][fset] = DATASETS[dataset_name]["train_size"]
+            VAL_SIZES[dataset_name][fset] = DATASETS[dataset_name]["val_size"]
     print("Loading data for", dataset_name)
     model_name = model_dicts[dataset_name]
     KLOM_PATH = EVAL_DIR / dataset_name / model_name
@@ -98,14 +123,10 @@ for dataset_name in selected_datasets:
     forget_sets = forgetset_dicts[dataset_name]
     TOTAL_EPOCHS = total_epochs_dicts[dataset_name]
     forget_indices = {i: torch.load(FDIR / f"forget_indices_{i}.pt") for i in forget_sets}
-    train_size = DATASETS[dataset_name]["train_size"]
-    val_size = DATASETS[dataset_name]["val_size"]
-    retain_indices = {i: [k for k in range(train_size) if k not in forget_indices[i]] for i in forget_sets}
-    val_indices = [k for k in range(train_size, train_size+val_size)]
-    contents = []
-    for fname in KLOM_PATH.iterdir():
-        contents.extend(parse_klom_fname(fname.name, KLOM_PATH, forget_indices, retain_indices, val_indices, TOTAL_EPOCHS, dataset_name))
+    for fname in tqdm(KLOM_PATH.iterdir(), total=len(list(KLOM_PATH.iterdir()))):
+        contents.extend(parse_klom_fname(fname.name, KLOM_PATH, TOTAL_EPOCHS, dataset_name, forget_indices))
 
+assert dataset_name == "cifar10"
 tmp_dir = Path("./tmp2")
 rows = []
 for fname in tmp_dir.iterdir():
@@ -116,6 +137,9 @@ for fname in tmp_dir.iterdir():
         kl = torch.load(fname)
         if forget_id not in forget_indices:
             continue
+        train_size = TRAIN_SIZES[dataset_name][forget_id]
+        val_size = VAL_SIZES[dataset_name][forget_id]
+        retain_indices, val_indices = get_indices(train_size, val_size, forget_indices)
         rows.append({
             "dataset": dataset_name,
             "method": "retrain",

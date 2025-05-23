@@ -75,7 +75,7 @@ if __name__=="__main__":
             "optimizer": ["sgd"],
             "model": ["resnet18"],
             "N": [100],
-            "forget_id": [i for i in range(1, 6)],
+            "forget_id": [i for i in range(1, 4)],
             "batch_size": [64],
             "dataset": ["living17"]
     }

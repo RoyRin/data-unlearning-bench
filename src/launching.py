@@ -14,6 +14,7 @@ def main():
     gpus = [int(x) for x in args.gpus.split(",") if x]
     filters = [x for x in (args.filters or "").split(",") if x]
 
+    # gather configs per GPU
     gpu_jobs = {g: [] for g in gpus}
     queue = sorted(
         f for f in CONFIG_DIR.iterdir()
@@ -24,13 +25,14 @@ def main():
         gpu = gpus[i % len(gpus)]
         gpu_jobs[gpu].append(cfg.name)
 
+    # determine log filename
     script_path = Path(args.output)
     base = script_path.stem
     log_file = f"pdb_{base}.txt"
 
     lines = [
         "#!/usr/bin/env bash",
-        "set -e",
+        "set -euo pipefail",
         f'LOG_FILE="{log_file}"',
         ': > "$LOG_FILE"',
         ""
@@ -40,17 +42,21 @@ def main():
         jobs = gpu_jobs[g]
         if not jobs:
             continue
+
         lines.append("(")
         for idx, cfg in enumerate(jobs, start=1):
-            cmd = f'CUDA_VISIBLE_DEVICES={g} python run.py --c {cfg}'
-            wrapped = (
-                f'CMD="{cmd}"\n'
-                f'$CMD 2>&1 | tee >(grep -q "(Pdb)" && echo "$CMD" >> "$LOG_FILE")'
+            cmd_str = f'CUDA_VISIBLE_DEVICES={g} python run.py --c {cfg}'
+
+            # inline the pipeline; if "(Pdb)" appears, append the full cmd_str
+            lines.append(
+                f'{cmd_str} 2>&1 | '
+                f'tee >(grep -q "(Pdb)" && echo "{cmd_str}" >> "$LOG_FILE") &'
             )
-            lines.append(wrapped + " &")
+
             if idx % args.jobs_per_gpu == 0 or idx == len(jobs):
                 lines.append("wait")
         lines.append(") &")
+
     lines.append("wait")
 
     with open(args.output, "w") as f:
