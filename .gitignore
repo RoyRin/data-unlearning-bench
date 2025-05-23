@@ -1,8 +1,13 @@
 __pycache__
-tmp/
+tmp*/
 *.pt
 *.npy
 cifar-10-batches-py/
 data/cifar-10-python.tar.gz
 config/
 data/living17/
+data/eval/
+data/margins/
+data/checkpoints/
+data/forget_set_indices/
+data/oracles/

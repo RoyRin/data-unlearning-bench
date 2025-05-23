@@ -28,7 +28,7 @@ os.makedirs(FORGET_INDICES_DIR, exist_ok=True)
 ORACLES_DIR = DATA_DIR / "oracles"
 os.makedirs(ORACLES_DIR, exist_ok=True)
 
-BASE_HF_REQ_URL = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/"
+BASE_HF_REQ_URL = "https://huggingface.co/datasets/machine-unlearning-bench/data-unlearning-bench/resolve/main/"
 HF_REGISTRY = {
     "oracle_margins": {
         "cifar10": {
@@ -94,9 +94,3 @@ def check_hf_registry(config, mode):
     if torch.is_tensor(all_contents[0]):
         all_contents = torch.cat(all_contents, dim=-1)
     return all_contents
-
-def get_living17_shapes(forget_id):
-    import io; import requests;
-    oracle_train_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{forget_id}/train_margins_all.pt").content)).shape[1]
-    oracle_val_len = torch.load(io.BytesIO(requests.get(f"https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/oracle_models/LIVING17/only_margins/forget_set_{forget_id}/val_margins_all.pt").content)).shape[1]
-    return oracle_train_len, oracle_val_len

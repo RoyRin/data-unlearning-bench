@@ -1,4 +1,0 @@
-allow to checkpoint across multiple epochs
-support for slurm launches
-allow loading the missing ones if config N < saved N
-epoch in margins filename and klom filename

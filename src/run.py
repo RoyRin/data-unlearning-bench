@@ -5,7 +5,7 @@ import argparse
 # project deps
 from eval import kl_from_margins, get_margins
 from datasets import DATASETS
-from paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry, get_living17_shapes
+from paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry
 from config import load_config, check_config
 from unlearning import get_checkpoint_name, UNLEARNING_METHODS, OPTIMIZERS
 
@@ -86,18 +86,6 @@ def load_unlearning_margins(config):
     torch.save(epoch_margins, unlearning_margins_path)
     return epoch_margins
 
-def adapt_living17_shapes(config, margins):
-    oracle_train_len, oracle_val_len = get_living17_shapes(config['forget_id'])
-    train_len = DATASETS[config['dataset']]["train_size"]
-    val_len = DATASETS[config['dataset']]["val_size"]
-    try:
-        assert  oracle_train_len + oracle_val_len >= 0.9 * (train_len + val_len)
-        assert oracle_val_len == val_len
-    except Exception as e:
-        print(e)
-    indices = list(range(0, oracle_train_len)) + list(range(train_len, train_len + val_len))
-    return margins[:, indices]
-
 def load_klom(config):
     klom_dir = EVAL_DIR / config['dataset'] / config['model']
     os.makedirs(klom_dir, exist_ok=True)
@@ -109,14 +97,8 @@ def load_klom(config):
     epoch_margins = load_unlearning_margins(config)
     epoch_kloms = {}
     for ep, margins in epoch_margins.items():
-        try:
-            if config['dataset'] == 'living17': # TODO: remove patch
-                margins = adapt_living17_shapes(config, margins)
-            res = kl_from_margins(oracle_margins, margins)
-            epoch_kloms[ep] = res
-        except Exception as e:
-            print(e)
-            import pdb; pdb.set_trace()
+        res = kl_from_margins(oracle_margins, margins)
+        epoch_kloms[ep] = res
     torch.save(epoch_kloms, klom_path)
     return epoch_kloms
 
