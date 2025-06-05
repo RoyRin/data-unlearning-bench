@@ -33,7 +33,8 @@ def check_config(config):
     assert len(missing_fields) == 0, f"config is missing required fields {missing_fields}"
     try:
         wrong_req_fields = [wrf for wrf in required_fields if not required_fields[wrf][0](config[wrf])]
-    except:
+    except Exception as e:
+        print(e)
         import pdb; pdb.set_trace()
     assert len(wrong_req_fields) == 0, f"wrong required fields {[(wrf, required_fields[wrf][1]) for wrf in wrong_req_fields]}"
 
@@ -89,15 +90,15 @@ if __name__=="__main__":
             "lr": [10000.0],
             "epochs": [1],
     }
-    scrub_configs = {
-            "unlearning_method": ["scrub"],
+    ascent_descent_configs = {
+            "unlearning_method": ["ascent_descent"],
             "lr": [5e-3, 1e-3, 5e-4, 5e-5],
             "epochs": [5, 7, 10],
             "ascent_epochs": [3, 5],
             "forget_batch_size": [32, 64],
     }
-    scrubnew_configs = {
-            "unlearning_method": ["scrubnew"],
+    scrub_configs = {
+            "unlearning_method": ["scrub"],
             "lr": [5e-3, 1e-3, 5e-4, 5e-5],
             "epochs": [5, 7, 10],
             "ascent_epochs": [3, 5],
@@ -106,10 +107,10 @@ if __name__=="__main__":
     # cifar_configs
     generate_configs({**ascent_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
     generate_configs({**do_nothing_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**ascent_descent_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
     generate_configs({**scrub_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
-    generate_configs({**scrubnew_configs, **cifar_params}, CONFIG_DIR, ["epochs"])
     # living configs 
     generate_configs({**ascent_configs, **living_params}, CONFIG_DIR, ["epochs"])
     generate_configs({**do_nothing_configs, **living_params}, CONFIG_DIR, ["epochs"])
+    generate_configs({**ascent_descent_configs, **living_params}, CONFIG_DIR, ["epochs"])
     generate_configs({**scrub_configs, **living_params}, CONFIG_DIR, ["epochs"])
-    generate_configs({**scrubnew_configs, **living_params}, CONFIG_DIR, ["epochs"])

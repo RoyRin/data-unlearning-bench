@@ -4,7 +4,7 @@ This codebase provides a framework for evaluating machine unlearning methods. It
 
 ## Core Functionality
 
-The primary script, `src/run.py`, orchestrates the unlearning and evaluation process. It performs the following key steps:
+The primary script, `data-unlearning/run.py`, orchestrates the unlearning and evaluation process. It performs the following key steps:
 
 1.  **Loads Configuration**: Reads a YAML configuration file specifying the dataset, model, unlearning method, hyperparameters, and other parameters.
 2.  **Loads Data**:
@@ -21,14 +21,14 @@ The primary script, `src/run.py`, orchestrates the unlearning and evaluation pro
 
 ## File Overview
 
--   `src/run.py`: Main script to execute unlearning experiments and evaluations.
--   `src/config.py`: Handles loading, checking, and generating YAML configuration files for experiments.
--   `src/unlearning.py`: Implements various unlearning algorithms (`do_nothing`, `ascent_forget`, `scrub`, `scrubnew`) and defines optimizers.
--   `src/eval.py`: Contains functions for computing classification margins and KL divergence between margin distributions.
--   `src/datasets.py`: Provides data loaders for supported datasets (`cifar10`, `living17`).
--   `src/models.py`: Defines model architectures (`ResNet9`, `ResNet18`).
--   `src/paths.py`: Defines directory paths for data, configurations, checkpoints, and results. It also includes functionality to download necessary files from a remote registry if not found locally.
--   `src/launching.py`: Generates a bash script to run multiple experiments (defined by YAML configuration files) in parallel across specified GPUs. It takes GPU assignments and job distribution parameters as input.
+-   `data-unlearning/run.py`: Main script to execute unlearning experiments and evaluations.
+-   `data-unlearning/config.py`: Handles loading, checking, and generating YAML configuration files for experiments.
+-   `data-unlearning/unlearning.py`: Implements various unlearning algorithms (`do_nothing`, `ascent_forget`, `scrub`, `scrubnew`) and defines optimizers.
+-   `data-unlearning/eval.py`: Contains functions for computing classification margins and KL divergence between margin distributions.
+-   `data-unlearning/datasets.py`: Provides data loaders for supported datasets (`cifar10`, `living17`).
+-   `data-unlearning/models.py`: Defines model architectures (`ResNet9`, `ResNet18`).
+-   `data-unlearning/paths.py`: Defines directory paths for data, configurations, checkpoints, and results. It also includes functionality to download necessary files from a remote registry if not found locally.
+-   `data-unlearning/launching.py`: Generates a bash script to run multiple experiments (defined by YAML configuration files) in parallel across specified GPUs. It takes GPU assignments and job distribution parameters as input.
 
 ## Setup
 
@@ -83,7 +83,7 @@ The expected directory structure (relative to the repository root) is:
 │   └── living17/       # For Living-17 dataset
 │       ├── raw_tensors_tr_new.pt
 │       └── raw_tensors_val_new.pt
-├── src/
+├── data-unlearning/
 │   ├── datasets.py
 │   ├── eval.py
 │   ├── config.py
@@ -99,32 +99,32 @@ The expected directory structure (relative to the repository root) is:
 
 ## Usage
 
-The recommended experimental pipeline involves defining hyperparameter search spaces in `src/config.py`, generating a runnable bash script using `src/launching.py`, and finally executing that script.
+The recommended experimental pipeline involves defining hyperparameter search spaces in `data-unlearning/config.py`, generating a runnable bash script using `data-unlearning/launching.py`, and finally executing that script.
 
-### 1. Define Hyperparameter Search Space (in `src/config.py`)
+### 1. Define Hyperparameter Search Space (in `data-unlearning/config.py`)
 
-The `src/config.py` script is the starting point for defining your experiments. It allows you to specify lists of hyperparameters that you want to explore.
+The `data-unlearning/config.py` script is the starting point for defining your experiments. It allows you to specify lists of hyperparameters that you want to explore.
 
--   Open `src/config.py`.
+-   Open `data-unlearning/config.py`.
 -   Modify the dictionaries (e.g., `cifar_params`, `living_params`, `ascent_configs`, `scrub_configs`) to define the ranges or specific values for parameters like learning rate, epochs, model architecture, dataset, etc.
--   When you run `python src/config.py`, it will generate a set of individual YAML configuration files in the `config/` directory. Each file represents a unique combination of the hyperparameters you defined.
+-   When you run `python data-unlearning/config.py`, it will generate a set of individual YAML configuration files in the `config/` directory. Each file represents a unique combination of the hyperparameters you defined.
 
 Example `config/` file naming convention:
 `unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml`
 
 This systematic generation ensures that all desired experimental conditions are covered.
 
-### 2. Generate Experiment Execution Script (with `src/launching.py`)
+### 2. Generate Experiment Execution Script (with `data-unlearning/launching.py`)
 
-Once your configuration files are generated by `src/config.py`, you use `src/launching.py` to create a bash script that will run all these experiments, potentially in parallel across multiple GPUs.
+Once your configuration files are generated by `data-unlearning/config.py`, you use `data-unlearning/launching.py` to create a bash script that will run all these experiments, potentially in parallel across multiple GPUs.
 
 To generate the execution script (e.g., `launch_jobs.sh`):
 
 ```bash
-python src/launching.py --gpus <gpu_ids_comma_separated> --jobs-per-gpu <num_jobs> --output <your_script_name.sh> --filters <comma_separated_filters_for_config_names>
+python data-unlearning/launching.py --gpus <gpu_ids_comma_separated> --jobs-per-gpu <num_jobs> --output <your_script_name.sh> --filters <comma_separated_filters_for_config_names>
 ```
 
-**Arguments for `src/launching.py`:**
+**Arguments for `data-unlearning/launching.py`:**
 
 -   `--gpus`: Comma-separated list of GPU IDs to use (e.g., `0,1,2,3`).
 -   `--jobs-per-gpu`: (Optional, default: 1) Number of concurrent jobs to run on each specified GPU.
@@ -135,7 +135,7 @@ This script will intelligently distribute the experiment runs (defined by the `.
 
 ### 3. Launch Experiments
 
-After `src/launching.py` has created your bash script (e.g., `launch_jobs.sh`), you can execute it to start all your experiments:
+After `data-unlearning/launching.py` has created your bash script (e.g., `launch_jobs.sh`), you can execute it to start all your experiments:
 
 ```bash
 bash <your_script_name.sh>
@@ -147,27 +147,27 @@ Or, if you used the default output name:
 bash launch_jobs.sh
 ```
 
-The script will then sequentially or concurrently (based on your `--jobs-per-gpu` setting and number of GPUs) execute `python src/run.py` for each relevant configuration file.
+The script will then sequentially or concurrently (based on your `--jobs-per-gpu` setting and number of GPUs) execute `python data-unlearning/run.py` for each relevant configuration file.
 
-Each `src/run.py` instance will:
+Each `data-unlearning/run.py` instance will:
 
 -   Load its specific configuration.
 -   Attempt to load necessary data (checkpoints, oracle margins, forget indices), downloading if configured and not found locally.
 -   Perform unlearning (or load pre-computed unlearning margins).
 -   Compute and save the KLOM results to the `data/eval/<dataset>/<model>/` directory. The filename will be based on the configuration.
 
-### Individual Run (Alternative to `src/launching.py`)
+### Individual Run (Alternative to `data-unlearning/launching.py`)
 
-If you wish to run a single experiment without using the `src/launching.py` script, you can still do so directly with `src/run.py` after ensuring the desired configuration file exists in `config/`:
+If you wish to run a single experiment without using the `data-unlearning/launching.py` script, you can still do so directly with `data-unlearning/run.py` after ensuring the desired configuration file exists in `config/`:
 
 ```bash
-python src/run.py --c config/<your_config_file_name>.yml
+python data-unlearning/run.py --c config/<your_config_file_name>.yml
 ```
 
 For example:
 
 ```bash
-python src/run.py --c config/unlearning_method-ascent_forget_dataset-cifar10_epochs-\[1,3,5,7,10\]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml
+python data-unlearning/run.py --c config/unlearning_method-ascent_forget_dataset-cifar10_epochs-\[1,3,5,7,10\]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml
 ```
 
 _(Note: You might need to escape characters like `[` and `]` in the filename depending on your shell.)_
@@ -190,7 +190,7 @@ Key parameters in the YAML configuration files include:
 
 ### Output
 
-The main output is the KLOM (KL divergence on Margins) scores, saved as `.pt` files in the `data/eval/<dataset>/<model>/` directory. The filename is generated based on the experiment configuration (see `get_checkpoint_name` in `src/unlearning.py`).
+The main output is the KLOM (KL divergence on Margins) scores, saved as `.pt` files in the `data/eval/<dataset>/<model>/` directory. The filename is generated based on the experiment configuration (see `get_checkpoint_name` in `data-unlearning/unlearning.py`).
 
 Intermediate unlearned model margins are saved in `data/margins/<dataset>/<model>/`.
 
@@ -201,7 +201,7 @@ Intermediate unlearned model margins are saved in `data/margins/<dataset>/<model
 
 ## Notes
 
--   The `src/launching.py` script (as described in the **Usage** section) facilitates running multiple experiments, potentially in parallel on multiple GPUs, by generating a bash script based on the configurations in the `config/` directory.
+-   The `data-unlearning/launching.py` script (as described in the **Usage** section) facilitates running multiple experiments, potentially in parallel on multiple GPUs, by generating a bash script based on the configurations in the `config/` directory.
 -   The code uses `torch.cuda` if available. Ensure your environment is set up correctly if you intend to use GPUs.
 -   The `living17` dataset requires pre-processed tensor files (`raw_tensors_tr_new.pt`, `raw_tensors_val_new.pt`) to be placed in the `data/living17/` directory.
--   In `src/datasets.py`, the function `get_living17_dataloader` is defined twice. It is recommended to remove one of the definitions.
+-   In `data-unlearning/datasets.py`, the function `get_living17_dataloader` is defined twice. It is recommended to remove one of the definitions.

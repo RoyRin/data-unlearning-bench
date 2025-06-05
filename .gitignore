@@ -4,10 +4,14 @@ tmp*/
 *.npy
 cifar-10-batches-py/
 data/cifar-10-python.tar.gz
-config/
+config/*
+!config/config_example.yml
 data/living17/
 data/eval/
 data/margins/
 data/checkpoints/
 data/forget_set_indices/
 data/oracles/
+external_repos/
+old_*.md
+*egg-info*

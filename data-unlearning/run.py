@@ -64,7 +64,7 @@ def load_unlearning_margins(config):
     # if not precomputed, we compute them
     pretrain_models = load_pretrain_checkpoints(config)
     forget_indices = load_forget_indices(config)
-    assert config['unlearning_method'] not in ['scrub', 'scrubnew'] or 'forget_batch_size' in config, f"forget_batch_size is required in config, current keys {config.keys()}"
+    assert config['unlearning_method'] not in ['ascent_descent', 'scrub'] or 'forget_batch_size' in config, f"forget_batch_size is required in config, current keys {config.keys()}"
     forget_loader = DATASETS[config['dataset']]['loader'](indices=forget_indices, batch_size=config['batch_size'] if "forget_batch_size" not in config else config['forget_batch_size'])
     retain_indices = [idx for idx in range(DATASETS[config['dataset']]['train_size']) if idx not in forget_indices]
     retain_loader = DATASETS[config['dataset']]['loader'](indices=retain_indices, batch_size=config['batch_size'])
@@ -79,7 +79,8 @@ def load_unlearning_margins(config):
             unlearn_margins = torch.cat([unlearn_margins_tr, unlearn_margins_val], dim=-1)
             try:
                 assert len(unlearn_margins.shape) == 1 and unlearn_margins.shape[0] == DATASETS[config['dataset']]['train_size'] + DATASETS[config['dataset']]['val_size']
-            except:
+            except Exception as e:
+                print(e)
                 import pdb; pdb.set_trace()
             epoch_margins[ep].append(unlearn_margins)
     epoch_margins = {ep: torch.stack(ep_marg) for ep, ep_marg in epoch_margins.items()}

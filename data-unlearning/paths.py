@@ -10,14 +10,15 @@ from models import MODELS
 import requests
 import torch
 import numpy as np
+from tqdm import tqdm
 
-# Paths with respect to files inside the repo src/ folder
+# Paths with respect to files inside the repo data-unlearning/ folder
 SRC_DIR = Path(__file__).resolve().parent
 REPO_DIR = SRC_DIR.parent
 DATA_DIR = REPO_DIR / "data"
 EVAL_DIR = DATA_DIR / "eval"
 os.makedirs(EVAL_DIR, exist_ok=True)
-CONFIG_DIR = REPO_DIR / "config"
+CONFIG_DIR = REPO_DIR / "configs"
 os.makedirs(CONFIG_DIR, exist_ok=True)
 MARGINS_DIR = DATA_DIR / "margins"
 os.makedirs(MARGINS_DIR, exist_ok=True)
@@ -28,7 +29,9 @@ os.makedirs(FORGET_INDICES_DIR, exist_ok=True)
 ORACLES_DIR = DATA_DIR / "oracles"
 os.makedirs(ORACLES_DIR, exist_ok=True)
 
-BASE_HF_REQ_URL = "https://huggingface.co/datasets/machine-unlearning-bench/data-unlearning-bench/resolve/main/"
+# the url below didnt work for the resolve approach, might be a config issue? for now using the KLOM models source
+# BASE_HF_REQ_URL = "https://huggingface.co/datasets/machine-unlearning-bench/data-unlearning-bench/resolve/main/"
+BASE_HF_REQ_URL = "https://huggingface.co/datasets/royrin/KLOM-models/resolve/main/"
 HF_REGISTRY = {
     "oracle_margins": {
         "cifar10": {
@@ -61,13 +64,14 @@ def check_hf_registry(config, mode):
     else:
         urls_to_check = HF_REGISTRY[mode][config['dataset']][config['model']](config)
     all_contents = []
-    for url in urls_to_check:
+    for url in tqdm(urls_to_check, desc="Checking HF registry"):
         req_url  = BASE_HF_REQ_URL + url
         out = requests.get(req_url, timeout=30).content
         if url.endswith(".pt"):
             try:
                 contents = torch.load(io.BytesIO(out), map_location="cpu")
-            except:
+            except Exception as e:
+                print(e)
                 import pdb; pdb.set_trace()
             if "checkpoints" in mode:
                 assert config['dataset'] in ["living17", "cifar10"], "dataset not in {['living17', 'cifar10']}"
@@ -81,7 +85,8 @@ def check_hf_registry(config, mode):
                             strict=True,
                         )
                     contents = model
-                except:
+                except Exception as e:
+                    print(e)
                     import pdb; pdb.set_trace()
             elif mode == "oracle_margins":
                 contents = contents[:config['N'], :]

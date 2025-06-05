@@ -1,0 +1,14 @@
+unlearning_method: ascent_descent
+lr: 0.001
+ascent_epochs: 3
+forget_batch_size: 32
+optimizer: sgd
+model: resnet9
+N: 100
+forget_id: 2
+batch_size: 64
+dataset: cifar10
+epochs:
+- 5
+- 7
+- 10

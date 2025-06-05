@@ -52,7 +52,7 @@ def ascent_forget(
             epoch_models[it] = deepcopy(m)
     return epoch_models
 
-def scrub(
+def ascent_descent(
     m,
     forget_loader,
     retain_loader,
@@ -63,7 +63,7 @@ def scrub(
     device: str = "cuda",
     **kwargs,
 ):
-    assert "ascent_epochs" in kwargs, "scrub requires ascent epochs in the config"
+    assert "ascent_epochs" in kwargs, "ascent_descent requires ascent epochs in the config"
     ascent_epochs = kwargs["ascent_epochs"]
     m = m.train().to(device)
     optimizer = optimizer_cls(m.parameters(), **optimizer_kwargs)
@@ -116,7 +116,7 @@ def distill_kl_loss(y_s, y_t, T):
     loss = F.kl_div(p_s, p_t, reduction='batchmean') * (T**2)
     return loss
 
-def scrubnew(
+def scrub(
     m,
     forget_loader,
     retain_loader,
@@ -200,7 +200,7 @@ def get_checkpoint_name(config, mode):
             name = f"do_nothing__f{config['forget_id']}_{mode}"
     elif config['unlearning_method'] == "ascent_forget":
         name = f"ascent_forget__lr_{config['lr']}__ep_{config['epochs']}__f{config['forget_id']}__bs{config['batch_size']}__{mode}"
-    elif config['unlearning_method'] == "scrub" or config['unlearning_method'] == "scrubnew":
+    elif config['unlearning_method'] == "ascent_descent" or config['unlearning_method'] == "scrub":
         name = f"{config['unlearning_method']}__lr_{config['lr']}__ep_{config['epochs']}__f{config['forget_id']}__bs{config['batch_size']}__ascent_epochs{config['ascent_epochs']}__{mode}"
     else:
         raise NotImplementedError(f"config {config['unlearning_method']} not implemented")
@@ -212,8 +212,8 @@ def get_checkpoint_name(config, mode):
 UNLEARNING_METHODS = {
     "do_nothing": do_nothing,
     "ascent_forget": ascent_forget,
+    "ascent_descent": ascent_descent,
     "scrub": scrub,
-    "scrubnew": scrubnew,
 }
 
 OPTIMIZERS = {
