@@ -7,10 +7,10 @@ authors = [
     "Pol Puigdemont Plana <polpuigdemont@gmail.com>
     ]
 
-
 packages = [
-    {include = "unlearning"},
+    {include = "unlearning_bench"},
 ]
+
 readme = "README.md"
 
 [tool.poetry.dependencies]
