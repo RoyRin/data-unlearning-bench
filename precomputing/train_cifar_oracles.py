@@ -1,3 +1,7 @@
+"""
+Python file included for reference about how the CIFAR oracles and original models were computed.
+"""
+
 from pathlib import Path
 import numpy as np
 import sys
@@ -7,9 +11,11 @@ import torch
 from pathlib import Path
 import numpy as np
 import torch
-from unlearning.models.resnet9 import ResNet9
-from unlearning.datasets.cifar10 import get_cifar_dataloader
-from unlearning.training import train
+from unlearning_bench.models import ResNet9
+from unlearning_bench.datasets import get_cifar_dataloader
+from unlearning_bench import train
+from unlearning_bench import ORACLES_PATH
+
 
 from unlearning.auditors.utils import (
     loader_factory,
@@ -142,8 +148,7 @@ if __name__ == "__main__":
     model_id_offset = machine_ind * N_models_per_job
 
     ds_name = "CIFAR10"
-    MODELS_PATH = Path("/n/home04/rrinberg/data_dir__holylabs/unlearning/precomputed_models/oracle_models/")
-    MODELS_PATH = MODELS_PATH / ds_name / f"forget_set_{forget_set_ind}"
+    MODELS_PATH = ORACLES_PATH / ds_name / f"forget_set_{forget_set_ind}"
     MODELS_PATH.mkdir(exist_ok=True, parents=True)
 
     print(f"[Job {job_id}] forget_set_ind={forget_set_ind}, machine_ind={machine_ind}, model_id_offset={model_id_offset}")

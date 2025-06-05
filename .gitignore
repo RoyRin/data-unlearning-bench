@@ -1,1 +1,22 @@
+<<<<<<< HEAD
 __pycache__
+=======
+poetry.lock
+__pycache__
+tmp*/
+*.pt
+*.npy
+cifar-10-batches-py/
+data/cifar-10-python.tar.gz
+config/*
+!config/config_example.yml
+data/living17/
+data/eval/
+data/margins/
+data/checkpoints/
+data/forget_set_indices/
+data/oracles/
+external_repos/
+old_*.md
+*egg-info*
+>>>>>>> MUGEN_workshop

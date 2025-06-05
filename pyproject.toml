@@ -1,4 +1,5 @@
 [tool.poetry]
+<<<<<<< HEAD
 name = "unlearning-bench"
 version = "0.1.0"
 description = ""
@@ -33,15 +34,35 @@ jupyter-black = "^0.3.4"
 #submitit = "^1.5.1"
 #transformers = "^4.40.2"
 #tiktoken = "^0.6.0"
+=======
+name = "data-unlearning-bench"
+version = "0.1.0"
+description = ""
+authors = [
+    "Roy Rinberg <royrinberg@gmail.com>", 
+    "Pol Puigdemont Plana <polpuigdemont@gmail.com>
+    ]
 
+packages = [
+    {include = "unlearning_bench"},
+]
 
-# terminaltables
-# fastargs
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^2.2.6"
+torch = "^2.7.1"
+ipykernel = "^6.29.5"
+matplotlib = "^3.10.3"
+tqdm = "^4.67.1"
+torchvision = "^0.22.1"
+pandas = "^2.3.0"
+>>>>>>> MUGEN_workshop
+
 
 [tool.poetry.group.dev.dependencies]
-jupyter = "^1.0.0"
-yapf = "^0.40.2"
-ipykernel = "^6.29.4"
+yapf = "^0.43.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,93 +1,70 @@
 # Data Unlearning Benchmark
 
-## How to Run - Quick start
-The main evaluation of unlearning algortihms is orchestrated through `eval_suite.py`.
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-yellow?style=for-the-badge)](https://huggingface.co/datasets/royrin/KLOM-models/tree/main) [![Licence](https://img.shields.io/badge/MIT_License-lightgreen?style=for-the-badge)](./LICENSE)
 
-`eval_suite.py` does 3 things:
-1. Initalizes the original models (N times), which it assumes are pre-trained, and place in `BASE_DIR`, defined in `unlearning.auditors.utils.py` (set as a global variable)
-2. run unlearning algorithm for a specific forget set (both specified by the config file) and saves the models.
-3. Loads the oracles (fully retrained models) for that forget set
-4. For a set of data point (in the forget, validation, and retain sets), eval_suite computes the margins of the oracle-models and the retain-models.
-5. Computes and stores the KLOM scores for each data point that one has margins for.
-
-
-To evaluate an unlearning method:
-```
-from unlearning.auditors.eval_suite import eval_suite
-config = {
-    "results_dir": "/path/to/output_dir",
-    "dataset": "cifar10",
-    "forgot_set_id": 5,
-    "unlearning_algo": "oracle_matching",
-    "unlearning_algo_kwargs": {
-         ...
-    },
-    "run_direct_eval": True,
-    "use_submitit_for_direct_eval": True,
-    "save_unlearned_margins": False,
-    "N_models_for_direct": 100,
-}
-eval_suite(config_dict=config)
+## Installation 📦
+```bash
+git clone git@github.com:RoyRin/data-unlearning-bench.git
+cd data-unlearning-bench
+pip install -e .
 ```
 
-The `unlearning_algo` name is searched in dictionary `NAME_TO_ALGO`, defined inside the file `unlearning.unlearning_algos.base_nn.py`. 
-
-`eval_suite.py` expects that `NAME_TO_ALGO` is a function that can be called with the following interface:
-
-```
-    unlearned_model = NAME_TO_ALGO[algo_name](
-        model=model,
-        train_dataloader=train_loader,
-        forget_dataloader=forget_loader,
-        forget_indices=forget_set_indices,
-        **unlearning_kwargs,
-    )
+## Quickstart ⚡️⚡️
+```bash
+python data-unlearning/run.py --c ascent_descent_example.yml
 ```
 
+## Usage Guide 🚀
 
-Unlearning Algorithms are located in `unlearning.unlearning_algos`, and are specified in `base_nn.py`. In our implementations, `eval_suite.py` is called from python files in `unlearning/evals` (e.g. `unlearning/evals/om_eval.py`)
+This benchmark provides a flexible way to run data unlearning experiments. The main workflow is:
 
-SCRUB is reimplemented from `https://github.com/meghdadk/SCRUB/tree/main`, largely copying directly, but with minor edits made for compatibility reasons and to fix a batch-order issue we found.
+1.  **Configure**: Define hyperparameter search spaces to generate configuration files for your experiments.
+2.  **Launch**: Generate a script to run these experiments, potentially in parallel across multiple GPUs.
+3.  **Execute**: Run the generated script to start the unlearning process and evaluation.
 
+### 1. Configure Your Experiments
 
+Experiments are defined by YAML files in the `config/` directory. You can generate these files by defining hyperparameter search spaces in `data-unlearning/config.py`.
 
-## Outline of Codebase:
+First, open `data-unlearning/config.py` and modify the parameter dictionaries (e.g., `cifar_params`, `living_params`, `ascent_configs`) to suit your needs.
+
+Then, generate the configuration files:
+```bash
+python data-unlearning/config.py
 ```
-├── LICENSE
-├── README.md
-├── datamodels - code for generating datamodels 
-├── example_configs
-│   └── oracle_matching_example_config.yaml - example config
-├── extra_installs.txt
-├── poetry.lock
-├── pyproject.toml
-└── unlearning
-    ├── __init__.py
-    ├── auditors - code for evaluating unlearning methods 
-    ├── datasets - code for managing datasets
-    ├── eval - code for actually running unlearning methods, and their evaluations
-    ├── models - code for model specification
-    ├── training - code for training
-    ├── unlearning_algos - code for our proposed algorithms
-    ├── unlearning_benchmarks - code for benchmarks
-    └── utils.py
+This will populate the `config/` directory with YAML files, each representing a unique experiment configuration. For example:
+`config/unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml`
+
+### 2. Launch Multiple Experiments
+
+To run all your configured experiments, especially across multiple GPUs, use `data-unlearning/launching.py` to generate a shell script.
+
+For example, to distribute jobs across 4 GPUs, running 2 jobs per GPU, and filtering for `ascent_forget` experiments on `cifar10`:
+
+```bash
+python data-unlearning/launching.py --gpus 0,1,2,3 --jobs-per-gpu 2 --filters ascent_forget,cifar10
+```
+This will create a `launch_jobs.sh` script.
+
+Now, simply run the script:
+```bash
+bash launch_jobs.sh
+```
+This will start executing the experiments. The results (KLOM scores) will be saved as `.pt` files in the `data/eval/<dataset>/<model>/` directory.
+
+### 3. Run a Single Experiment
+
+If you want to run a single experiment, you can directly use `data-unlearning/run.py` with a specific configuration file.
+
+```bash
+python data-unlearning/run.py --c config/your_config_file.yml
 ```
 
-
-## Forget Set Indices:
-While by default we only include training code for CIFAR10, we include the forget set indices for CIFAR10, LIVING17, and QNLI in 
-`forget_set_indices`.
-
-They were originally created through `precomputing/forget_sets.ipynb`
-
-
-## Precomputing original and oracle (retrained) models
-
-Original models and oracle (fully retrained) models are computed through `precomputing/oracles_and_full_models.ipynb`. We train on Resnet9 and Reset18.
-
-
-## Algorithms
+For instance:
+```bash
+python data-unlearning/run.py --c "config/unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml"
 ```
+<<<<<<< HEAD
 unlearning_algos/
 ├── base_nn.py - holds dictionary that maps names to function calls
 ├── dm_direct.py - datamodel direct algo
@@ -190,3 +167,6 @@ extra imports required:
     fastarg
     torchmetrics  
 ```
+=======
+*(Note: Wrapping the filename in quotes can help your shell handle special characters like `[` and `]`.)*
+>>>>>>> MUGEN_workshop
