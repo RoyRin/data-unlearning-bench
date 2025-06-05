@@ -1,7 +1,8 @@
 import argparse
 import os
 from pathlib import Path
-from paths import CONFIG_DIR
+
+from unlearning_bench.paths import CONFIG_DIR
 
 def main():
     p = argparse.ArgumentParser()

@@ -3,11 +3,11 @@ import os
 import argparse
 
 # project deps
-from eval import kl_from_margins, get_margins
-from datasets import DATASETS
-from paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry
-from config import load_config, check_config
-from unlearning import get_checkpoint_name, UNLEARNING_METHODS, OPTIMIZERS
+from unlearning_bench.eval import kl_from_margins, get_margins
+from unlearning_bench.datasets import DATASETS
+from unlearning_bench.paths import CHECKPOINTS_DIR, EVAL_DIR, FORGET_INDICES_DIR, MARGINS_DIR, ORACLES_DIR, check_hf_registry
+from unlearning_bench.config import load_config, check_config
+from unlearning_bench.unlearning import get_checkpoint_name, UNLEARNING_METHODS, OPTIMIZERS
 
 # external deps
 import torch

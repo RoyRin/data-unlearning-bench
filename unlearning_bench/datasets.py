@@ -2,7 +2,7 @@
 from pathlib import Path
 
 # project deps
-from paths import DATA_DIR
+from unlearning_bench.paths import DATA_DIR
 
 # external deps
 import torch

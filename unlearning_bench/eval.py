@@ -2,7 +2,7 @@
 import os
 
 # project deps
-from paths import EVAL_DIR, DATA_DIR
+from unlearning_bench.paths import EVAL_DIR, DATA_DIR
 
 # external deps
 import numpy as np

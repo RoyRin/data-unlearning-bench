@@ -3,10 +3,10 @@ import os
 import itertools
 
 # project deps
-from paths import CONFIG_DIR
-from unlearning import UNLEARNING_METHODS
-from datasets import DATASETS
-from models import MODELS
+from unlearning_bench.paths import CONFIG_DIR
+from unlearning_bench.unlearning import UNLEARNING_METHODS
+from unlearning_bench.datasets import DATASETS
+from unlearning_bench.models import MODELS
 
 # external deps
 import yaml

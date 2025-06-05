@@ -4,7 +4,7 @@ import os
 import io
 
 # project deps
-from models import MODELS
+from unlearning_bench.models import MODELS
 
 # third party deps
 import requests
