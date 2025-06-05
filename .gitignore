@@ -1,6 +1,4 @@
-<<<<<<< HEAD
 __pycache__
-=======
 poetry.lock
 __pycache__
 tmp*/
@@ -19,4 +17,3 @@ data/oracles/
 external_repos/
 old_*.md
 *egg-info*
->>>>>>> MUGEN_workshop
