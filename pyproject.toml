@@ -2,7 +2,15 @@
 name = "data-unlearning-bench"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = [
+    "Roy Rinberg <royrinberg@gmail.com>", 
+    "Pol Puigdemont Plana <polpuigdemont@gmail.com>
+    ]
+
+
+packages = [
+    {include = "unlearning"},
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
