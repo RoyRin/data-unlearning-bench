@@ -11,7 +11,7 @@ pip install -e .
 
 ## Quickstart ⚡️⚡️
 ```bash
-python src/run.py --c ascent_descent_example.yml
+python data-unlearning/run.py --c ascent_descent_example.yml
 ```
 
 ## Usage Guide 🚀
@@ -24,25 +24,25 @@ This benchmark provides a flexible way to run data unlearning experiments. The m
 
 ### 1. Configure Your Experiments
 
-Experiments are defined by YAML files in the `config/` directory. You can generate these files by defining hyperparameter search spaces in `src/config.py`.
+Experiments are defined by YAML files in the `config/` directory. You can generate these files by defining hyperparameter search spaces in `data-unlearning/config.py`.
 
-First, open `src/config.py` and modify the parameter dictionaries (e.g., `cifar_params`, `living_params`, `ascent_configs`) to suit your needs.
+First, open `data-unlearning/config.py` and modify the parameter dictionaries (e.g., `cifar_params`, `living_params`, `ascent_configs`) to suit your needs.
 
 Then, generate the configuration files:
 ```bash
-python src/config.py
+python data-unlearning/config.py
 ```
 This will populate the `config/` directory with YAML files, each representing a unique experiment configuration. For example:
 `config/unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml`
 
 ### 2. Launch Multiple Experiments
 
-To run all your configured experiments, especially across multiple GPUs, use `src/launching.py` to generate a shell script.
+To run all your configured experiments, especially across multiple GPUs, use `data-unlearning/launching.py` to generate a shell script.
 
 For example, to distribute jobs across 4 GPUs, running 2 jobs per GPU, and filtering for `ascent_forget` experiments on `cifar10`:
 
 ```bash
-python src/launching.py --gpus 0,1,2,3 --jobs-per-gpu 2 --filters ascent_forget,cifar10
+python data-unlearning/launching.py --gpus 0,1,2,3 --jobs-per-gpu 2 --filters ascent_forget,cifar10
 ```
 This will create a `launch_jobs.sh` script.
 
@@ -54,14 +54,14 @@ This will start executing the experiments. The results (KLOM scores) will be sav
 
 ### 3. Run a Single Experiment
 
-If you want to run a single experiment, you can directly use `src/run.py` with a specific configuration file.
+If you want to run a single experiment, you can directly use `data-unlearning/run.py` with a specific configuration file.
 
 ```bash
-python src/run.py --c config/your_config_file.yml
+python data-unlearning/run.py --c config/your_config_file.yml
 ```
 
 For instance:
 ```bash
-python src/run.py --c "config/unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml"
+python data-unlearning/run.py --c "config/unlearning_method-ascent_forget_dataset-cifar10_epochs-[1,3,5,7,10]_forget_id-1_lr-1e-05_model-resnet9_optimizer-sgd_N-100_batch_size-64.yml"
 ```
 *(Note: Wrapping the filename in quotes can help your shell handle special characters like `[` and `]`.)*
