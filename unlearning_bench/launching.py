@@ -4,6 +4,7 @@ from pathlib import Path
 
 from unlearning_bench.paths import CONFIG_DIR
 
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--gpus", required=True)
@@ -19,9 +20,8 @@ def main():
     gpu_jobs = {g: [] for g in gpus}
     queue = sorted(
         f for f in CONFIG_DIR.iterdir()
-        if f.suffix == ".yml"
-        and (not filters or all(filt in f.name for filt in filters))
-    )
+        if f.suffix == ".yml" and (not filters or all(filt in f.name
+                                                      for filt in filters)))
     for i, cfg in enumerate(queue):
         gpu = gpus[i % len(gpus)]
         gpu_jobs[gpu].append(cfg.name)
@@ -32,11 +32,8 @@ def main():
     log_file = f"pdb_{base}.txt"
 
     lines = [
-        "#!/usr/bin/env bash",
-        "set -euo pipefail",
-        f'LOG_FILE="{log_file}"',
-        ': > "$LOG_FILE"',
-        ""
+        "#!/usr/bin/env bash", "set -euo pipefail", f'LOG_FILE="{log_file}"',
+        ': > "$LOG_FILE"', ""
     ]
 
     for g in gpus:
@@ -51,8 +48,7 @@ def main():
             # inline the pipeline; if "(Pdb)" appears, append the full cmd_str
             lines.append(
                 f'{cmd_str} 2>&1 | '
-                f'tee >(grep -q "(Pdb)" && echo "{cmd_str}" >> "$LOG_FILE") &'
-            )
+                f'tee >(grep -q "(Pdb)" && echo "{cmd_str}" >> "$LOG_FILE") &')
 
             if idx % args.jobs_per_gpu == 0 or idx == len(jobs):
                 lines.append("wait")
@@ -64,6 +60,6 @@ def main():
         f.write("\n".join(lines))
     os.chmod(args.output, 0o755)
 
+
 if __name__ == "__main__":
     main()
-

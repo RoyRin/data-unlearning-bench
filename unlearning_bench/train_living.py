@@ -40,10 +40,8 @@ from fastargs.decorators import param
 from fastargs import Param, Section
 from fastargs.validation import And, OneOf
 
-
 from unlearning.auditors.utils import (
-    load_forget_set_indices,
-)
+    load_forget_set_indices, )
 
 from ffcv.pipeline.operation import Operation
 from ffcv.loader import Loader, OrderOption
@@ -66,8 +64,6 @@ except Exception as e:
     print(e)
     print("FFCV not installed")
 
-
-
 import fastargs
 
 from unlearning import LIVING17_ROOT, LIVING17_ORACLE_MODELS, LIVING17_FULL_MODELS
@@ -81,11 +77,13 @@ Section("model", "model details").params(
 )
 
 Section("data", "data related stuff").params(
-    root=Param(
-        str, "root directory of datasets", default=str(LIVING17_ROOT)
-    ),
-    train_dataset=Param(str, "file to use for training", default="living17_tr.beton"),
-    val_dataset=Param(str, "file to use for validation", default="living17_val.beton"),
+    root=Param(str, "root directory of datasets", default=str(LIVING17_ROOT)),
+    train_dataset=Param(str,
+                        "file to use for training",
+                        default="living17_tr.beton"),
+    val_dataset=Param(str,
+                      "file to use for validation",
+                      default="living17_val.beton"),
     num_workers=Param(int, "The number of workers", default=1),
     in_memory=Param(int, "does the dataset fit in memory? (1/0)", default=1),
     augment=Param(int, "augment vs not", default=0),
@@ -138,10 +136,12 @@ Section("training", "training hyper param stuff").params(
 Section("unlearning", "unlearning parameters").params(
     forget_set_id=Param(int, "ID of the forget set", default=None),
     idx_start=Param(int, "Starting index for model IDs", default=0),
-    n_models=Param(int, "Number of models to train on this machine", default=1),
-    model_id_offset=Param(int, "Offset to add to model ID when saving", default=0),
+    n_models=Param(int, "Number of models to train on this machine",
+                   default=1),
+    model_id_offset=Param(int,
+                          "Offset to add to model ID when saving",
+                          default=0),
 )
-
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) * 255
 IMAGENET_STD = np.array([0.229, 0.224, 0.225]) * 255
@@ -150,6 +150,7 @@ NUM_TRAIN = 88_400 // 2
 
 
 class MeanScalarMetric(torchmetrics.Metric):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -186,9 +187,11 @@ def get_cyclic_lr(epoch, lr, epochs, lr_peak_epoch):
 
 
 class BlurPoolConv2d(ch.nn.Module):
+
     def __init__(self, conv):
         super().__init__()
-        default_filter = ch.tensor([[[[1, 2, 1], [2, 4, 2], [1, 2, 1]]]]) / 16.0
+        default_filter = ch.tensor([[[[1, 2, 1], [2, 4, 2], [1, 2, 1]]]
+                                    ]) / 16.0
         filt = default_filter.repeat(conv.in_channels, 1, 1, 1)
         self.conv = conv
         self.register_buffer("blur_filter", filt)
@@ -206,6 +209,7 @@ class BlurPoolConv2d(ch.nn.Module):
 
 
 class Trainer:
+
     def __init__(self, ckpt_dir, model_id, checkpoint_epochs, indices):
         self.all_params = get_current_config()
         self.device = "cuda"
@@ -225,7 +229,8 @@ class Trainer:
     def model_weights(self):
         model = self.model
         buffs = parameters_to_vector(model.buffers()).cpu().numpy()
-        params = parameters_to_vector(model.parameters()).detach().cpu().numpy()
+        params = parameters_to_vector(
+            model.parameters()).detach().cpu().numpy()
         return np.concatenate([params, buffs]).astype("float16")
 
     @param("lr.lr_schedule_type")
@@ -238,7 +243,8 @@ class Trainer:
     @param("training.optimizer")
     @param("training.weight_decay")
     @param("training.label_smoothing")
-    def create_optimizer(self, momentum, optimizer, weight_decay, label_smoothing):
+    def create_optimizer(self, momentum, optimizer, weight_decay,
+                         label_smoothing):
         assert optimizer == "sgd"
 
         # Only do weight decay on non-batchnorm parameters
@@ -246,8 +252,14 @@ class Trainer:
         bn_params = [v for k, v in all_params if ("bn" in k)]
         other_params = [v for k, v in all_params if not ("bn" in k)]
         param_groups = [
-            {"params": bn_params, "weight_decay": 0.0},
-            {"params": other_params, "weight_decay": weight_decay},
+            {
+                "params": bn_params,
+                "weight_decay": 0.0
+            },
+            {
+                "params": other_params,
+                "weight_decay": weight_decay
+            },
         ]
 
         self.optimizer = ch.optim.SGD(param_groups, lr=1, momentum=momentum)
@@ -282,8 +294,7 @@ class Trainer:
         if augment:
             print("> RRC SCALE:", rrc_scale_low, flush=True)
             self.decoder = RandomResizedCropRGBImageDecoder(
-                (res, res), scale=(rrc_scale_low, rrc_scale_high)
-            )
+                (res, res), scale=(rrc_scale_low, rrc_scale_high))
             image_pipeline: List[Operation] = [
                 self.decoder,
                 RandomHorizontalFlip(),
@@ -293,9 +304,8 @@ class Trainer:
                 NormalizeImage(IMAGENET_MEAN, IMAGENET_STD, np.float16),
             ]
         else:
-            self.decoder = CenterCropRGBImageDecoder(
-                (res, res), ratio=DEFAULT_CROP_RATIO
-            )
+            self.decoder = CenterCropRGBImageDecoder((res, res),
+                                                     ratio=DEFAULT_CROP_RATIO)
             image_pipeline: List[Operation] = [
                 self.decoder,
                 ToTensor(),
@@ -342,14 +352,14 @@ class Trainer:
     @param("validation.resolution")
     @param("validation.batch_size")
     @param("data.in_memory")
-    def create_val_loader(
-        self, root, val_dataset, num_workers, resolution, batch_size, in_memory
-    ):
+    def create_val_loader(self, root, val_dataset, num_workers, resolution,
+                          batch_size, in_memory):
         this_device = f"cuda"
         val_path = Path(os.path.join(root, val_dataset))
         assert val_path.is_file()
         res_tuple = (resolution, resolution)
-        cropper = CenterCropRGBImageDecoder(res_tuple, ratio=DEFAULT_CROP_RATIO)
+        cropper = CenterCropRGBImageDecoder(res_tuple,
+                                            ratio=DEFAULT_CROP_RATIO)
         image_pipeline = [
             cropper,
             ToTensor(),
@@ -415,12 +425,14 @@ class Trainer:
                 print(f"saving model at epoch {epoch}")
                 ch.save(
                     self.model.state_dict(),
-                    Path(self.ckpt_dir) / f"sd_{self.model_id}____epoch_{epoch}.pt",
+                    Path(self.ckpt_dir) /
+                    f"sd_{self.model_id}____epoch_{epoch}.pt",
                 )
 
         self.eval_and_log({"epoch": epoch})
         if save_model:
-            ch.save(self.model.state_dict(), self.log_folder / "final_weights.pt")
+            ch.save(self.model.state_dict(),
+                    self.log_folder / "final_weights.pt")
 
     def eval_and_log(self, extra_dict={}):
         start_val = time.time()
@@ -435,15 +447,15 @@ class Trainer:
                     "val_time": val_time,
                 },
                 **extra_dict,
-            )
-        )
+            ))
 
         return stats
 
     def model_weights(self):
         model = self.model
         buffs = parameters_to_vector(model.buffers()).cpu().numpy()
-        params = parameters_to_vector(model.parameters()).detach().cpu().numpy()
+        params = parameters_to_vector(
+            model.parameters()).detach().cpu().numpy()
         return np.concatenate([params, buffs]).astype("float16")
 
     @param("model.arch")
@@ -528,13 +540,14 @@ class Trainer:
     @param("logging.save_log")
     def initialize_logger(self, folder, save_log):
         self.val_meters = {
-            "top_1": torchmetrics.Accuracy(task="multiclass", num_classes=17).to(
-                self.device
-            ),
-            "top_5": torchmetrics.Accuracy(
-                task="multiclass", top_k=5, num_classes=17
-            ).to(self.device),
-            "loss": MeanScalarMetric().to(self.device),
+            "top_1":
+            torchmetrics.Accuracy(task="multiclass",
+                                  num_classes=17).to(self.device),
+            "top_5":
+            torchmetrics.Accuracy(task="multiclass", top_k=5,
+                                  num_classes=17).to(self.device),
+            "loss":
+            MeanScalarMetric().to(self.device),
         }
 
         if save_log:
@@ -551,7 +564,8 @@ class Trainer:
 
             print(f"=> Logging in {self.log_folder}")
             params = {
-                ".".join(k): self.all_params[k] for k in self.all_params.entries.keys()
+                ".".join(k): self.all_params[k]
+                for k in self.all_params.entries.keys()
             }
 
             with open(folder / "params.json", "w+") as handle:
@@ -564,15 +578,11 @@ class Trainer:
         if save_log:
             with open(self.log_folder / "log", "a+") as fd:
                 fd.write(
-                    json.dumps(
-                        {
-                            "timestamp": cur_time,
-                            "relative_time": cur_time - self.start_time,
-                            **content,
-                        }
-                    )
-                    + "\n"
-                )
+                    json.dumps({
+                        "timestamp": cur_time,
+                        "relative_time": cur_time - self.start_time,
+                        **content,
+                    }) + "\n")
                 fd.flush()
 
     def eval_and_save_logits(self, split):
@@ -608,7 +618,7 @@ def wrapper_for_train_living17_on_subset_submitit(
     should_save_train_logits: bool = False,
     should_save_val_logits: bool = False,
     model_id_offset: int = 0,
-    checkpoint_epochs=[ 24],
+    checkpoint_epochs=[24],
 ):
     """
     - masks_path gives the path to a np array of shape [K, train_set_size],
@@ -622,17 +632,14 @@ def wrapper_for_train_living17_on_subset_submitit(
     - model_id_offset is the offset to add to the model_id when saving the
     model, here only for a hacky use, feel free to ignore
     """
-    
-    
+
     train_indices = np.arange(44_200)
     print(f"original  indices - {len(train_indices)}")
     if forget_set_id is not None:
-        forget_set_indices = load_forget_set_indices("LIVING17",
-                                                 forget_set_id)
-        
-        
+        forget_set_indices = load_forget_set_indices("LIVING17", forget_set_id)
+
         indices = np.setdiff1d(train_indices, forget_set_indices)
-        
+
     else:
         indices = train_indices
 
@@ -644,7 +651,7 @@ def wrapper_for_train_living17_on_subset_submitit(
         if (ckpt_dir / f"val_logits_{model_id + model_id_offset}.pt").exists():
             print(f"skipping model {model_id} because logits already exist")
             continue
-        
+
         assert len(indices) > 0, "mask is empty"
 
         trainer = Trainer(
@@ -673,24 +680,24 @@ if __name__ == "__main__":
     config.augment_argparse(parser)
     config.collect_argparse_args(parser)
     config.validate()  # Initialize config with defaults
-    
+
     forget_set_id = config["unlearning.forget_set_id"]
     idx_start = config["unlearning.idx_start"]
     n_models = config["unlearning.n_models"]
     model_id_offset = config["unlearning.model_id_offset"]
-    
+
     print(f"forget_set_id - {forget_set_id}")
     print(f"idx_start - {idx_start}")
     print(f"n_models - {n_models}")
     print(f"model_id_offset - {model_id_offset}")
-    
+
     if forget_set_id is not None:
         SAVE_DIR = LIVING17_ORACLE_MODELS / f"forget_set_{forget_set_id}"
     else:
         SAVE_DIR = LIVING17_FULL_MODELS
     # make sure the directory exists
     SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     wrapper_for_train_living17_on_subset_submitit(
         forget_set_id=forget_set_id,
         idx_start=idx_start,

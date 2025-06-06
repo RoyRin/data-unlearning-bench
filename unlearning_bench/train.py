@@ -9,7 +9,6 @@ from torch.optim import SGD, lr_scheduler
 
 from torchvision import models as torchvision_models
 
-
 from unlearning_bench.models import ResNet9
 from unlearning_bench.datasets import get_cifar_dataloader
 
@@ -43,7 +42,6 @@ def get_margins(targets, logits):
         for (logit, target) in zip(logits, targets)
     ]
     return np.array(margins)
-
 
 
 def save_logits_and_margins(model, ckpt_dir, model_num, epoch):
@@ -194,4 +192,3 @@ def eval_cifar10(model, loader, verbose=True):
 
     model.train(is_training)
     return accuracy
-

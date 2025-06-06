@@ -2,7 +2,9 @@
 import torch
 import torchvision
 
+
 class Mul(torch.nn.Module):
+
     def __init__(self, weight):
         super(Mul, self).__init__()
         self.weight = weight
@@ -12,11 +14,13 @@ class Mul(torch.nn.Module):
 
 
 class Flatten(torch.nn.Module):
+
     def forward(self, x):
         return x.view(x.size(0), -1)
 
 
 class Residual(torch.nn.Module):
+
     def __init__(self, module):
         super(Residual, self).__init__()
         self.module = module
@@ -25,7 +29,12 @@ class Residual(torch.nn.Module):
         return x + self.module(x)
 
 
-def conv_bn(channels_in, channels_out, kernel_size=3, stride=1, padding=1, groups=1):
+def conv_bn(channels_in,
+            channels_out,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            groups=1):
     return torch.nn.Sequential(
         torch.nn.Conv2d(
             channels_in,
@@ -59,7 +68,11 @@ def ResNet9(num_classes=10, channels_last=True):
         model = model.to(memory_format=torch.channels_last)
     return model
 
-def ResNet18(num_classes=10, pretrained=False, channels_last=True, ckpt_path=None):
+
+def ResNet18(num_classes=10,
+             pretrained=False,
+             channels_last=True,
+             ckpt_path=None):
     weights = torchvision.models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
     m = torchvision.models.resnet18(weights=weights)
     m.fc = torch.nn.Linear(m.fc.in_features, num_classes, bias=True)
@@ -71,6 +84,7 @@ def ResNet18(num_classes=10, pretrained=False, channels_last=True, ckpt_path=Non
     if channels_last:
         m = m.to(memory_format=torch.channels_last)
     return m
+
 
 MODELS = {
     "resnet9": ResNet9,

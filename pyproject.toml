@@ -5,7 +5,7 @@ version = "0.1.0"
 description = ""
 authors = [
     "Roy Rinberg <royrinberg@gmail.com>", 
-    "Pol Puigdemont Plana <polpuigdemont@gmail.com>
+    "Pol Puigdemont Plana <polpuigdemont@gmail.com>"
     ]
 
 packages = [

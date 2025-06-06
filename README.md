@@ -11,7 +11,7 @@ pip install -e .
 
 ## Quickstart ⚡️⚡️
 ```bash
-python unlearning_bench/run.py --c ascent_descent_example.yml
+python unlearning_bench/run.py --c example_configs/ascent_descent_example.yml
 ```
 
 
@@ -141,3 +141,9 @@ We use three different forget sets:
 * Forget sets 2 and 3 correspond to 200 examples from a certain subpopulation (corresponding to a single original ImageNet class) within the Living-17 superclass.
 
 
+
+
+
+# Contributing
+
+To set up git hooks properly, please run `git config core.hooksPath .githooks` (once). This will enable hooks such as running yapf on all python files.

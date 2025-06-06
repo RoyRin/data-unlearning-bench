@@ -23,6 +23,7 @@ def to_np_cpu(x):
 
         pdb.set_trace()
 
+
 def get_margins_from_multimodel_logits(
     logits: torch.Tensor,
     labels: torch.Tensor,
@@ -37,6 +38,7 @@ def get_margins_from_multimodel_logits(
     lse_other = logits.masked_fill(one_hot, -torch.inf).logsumexp(dim=-1)
     return logits_correct - lse_other
 
+
 def get_margin(
     model: torch.nn.Module,
     images: torch.Tensor,
@@ -47,19 +49,20 @@ def get_margin(
     margin = logit_correct - log_sum_exp(logit_other)
     """
     logits = model(images)
-    bindex = torch.arange(logits.shape[0]).to(logits.device, non_blocking=False)
+    bindex = torch.arange(logits.shape[0]).to(logits.device,
+                                              non_blocking=False)
     logits_correct = logits[bindex, labels]
     # Use clone to avoid modifying original logits if model is used elsewhere
     cloned_logits = logits.clone()
-    cloned_logits[bindex, labels] = torch.tensor(
-        -torch.inf, device=cloned_logits.device, dtype=cloned_logits.dtype
-    )
+    cloned_logits[bindex, labels] = torch.tensor(-torch.inf,
+                                                 device=cloned_logits.device,
+                                                 dtype=cloned_logits.dtype)
     return logits_correct - cloned_logits.logsumexp(dim=-1)
 
 
-def get_margins(
-    model: torch.nn.Module, loader: DataLoader, device: str = "cuda"
-) -> torch.Tensor:
+def get_margins(model: torch.nn.Module,
+                loader: DataLoader,
+                device: str = "cuda") -> torch.Tensor:
     model = model.to(device).eval()
     all_margins = []
     with torch.no_grad():
@@ -95,7 +98,8 @@ def compute_binned_KL_div(
     bins_end = max(p_arr.max(), q_arr.max())
     if bins_start >= bins_end:  # Handle edge case where all values are the same
         bins_end = bins_start + 1
-    bins = np.linspace(bins_start, bins_end, bin_count + 1)  # bin_count intervals
+    bins = np.linspace(bins_start, bins_end,
+                       bin_count + 1)  # bin_count intervals
 
     # Digitize arrays: find which bin each sample falls into
     # np.digitize returns indices starting from 1
@@ -104,32 +108,23 @@ def compute_binned_KL_div(
 
     # Count samples per bin (adjusting for 1-based indexing of digitize)
     p_bin_counts = np.array(
-        [np.sum(p_binned_indices == i) for i in range(1, bin_count + 1)]
-    )
+        [np.sum(p_binned_indices == i) for i in range(1, bin_count + 1)])
     q_bin_counts = np.array(
-        [np.sum(q_binned_indices == i) for i in range(1, bin_count + 1)]
-    )
+        [np.sum(q_binned_indices == i) for i in range(1, bin_count + 1)])
 
     # Convert counts to probabilities
     p_total = p_bin_counts.sum()
     q_total = q_bin_counts.sum()
 
     # Avoid division by zero if an array is empty
-    p_bin_probs = (
-        p_bin_counts / p_total
-        if p_total > 0
-        else np.zeros_like(p_bin_counts, dtype=float)
-    )
-    q_bin_probs = (
-        q_bin_counts / q_total
-        if q_total > 0
-        else np.zeros_like(q_bin_counts, dtype=float)
-    )
+    p_bin_probs = (p_bin_counts / p_total if p_total > 0 else np.zeros_like(
+        p_bin_counts, dtype=float))
+    q_bin_probs = (q_bin_counts / q_total if q_total > 0 else np.zeros_like(
+        q_bin_counts, dtype=float))
 
     # Avoid log(0) issues in KL divergence calculation. Add eps where p > 0.
-    q_bin_probs_safe = np.where(
-        p_bin_probs > 0, np.maximum(q_bin_probs, eps), q_bin_probs
-    )
+    q_bin_probs_safe = np.where(p_bin_probs > 0, np.maximum(q_bin_probs, eps),
+                                q_bin_probs)
     # Renormalize q_safe slightly if needed? Scipy handles non-normalized qk ok.
 
     return stats.entropy(pk=p_bin_probs, qk=q_bin_probs_safe)
@@ -141,18 +136,18 @@ def kl_from_margins(
     clip_min: float = -100,
     clip_max: float = 100,
 ):
-    assert (
-        all_oracle_margins.shape == all_unlearned_margins.shape
-    ), "Margin tensors must have the same shape"
+    assert (all_oracle_margins.shape == all_unlearned_margins.shape
+            ), "Margin tensors must have the same shape"
     print("Computing results...")
     results_list = []
     N = all_oracle_margins.shape[1]
     for sample in tqdm(range(N), desc="KL div"):
         oracle_arr = to_np_cpu(all_oracle_margins[:, sample])
         unlearned_arr = to_np_cpu(all_unlearned_margins[:, sample])
-        KL_div = compute_binned_KL_div(
-            unlearned_arr, oracle_arr, min_val=clip_min, max_val=clip_max
-        )
+        KL_div = compute_binned_KL_div(unlearned_arr,
+                                       oracle_arr,
+                                       min_val=clip_min,
+                                       max_val=clip_max)
         results_list.append(KL_div)
     results = np.stack(results_list)
     return results
