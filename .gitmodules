@@ -1,0 +1,3 @@
+[submodule "modded-nanogpt"]
+	path = modded-nanogpt
+	url = git@github.com:RoyRin/modded-nanogpt.git
