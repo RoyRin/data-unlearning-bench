@@ -97,6 +97,8 @@ Originally proposed in the work Attribute-to-Delete: Machine Unlearning via Data
 
 # How to download KLOM Data Repo
 
+NOTE: Required data for an experiment will be downloaded at runtime (recommended for experimentation) and margins will be cached in disk for future runs. The below instructions are useful in case you want to just download data.
+
 Create script `download_folder.sh`
 ```
 #!/bin/bash
