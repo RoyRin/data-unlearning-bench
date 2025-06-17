@@ -441,7 +441,8 @@ def distributed_data_generator(filename_pattern: str, batch_size: int, rank : in
 @dataclass
 class Hyperparameters:
     # data
-    train_files = "data/fineweb10B/fineweb_train_*.bin" # input .bin to train on
+    # train_files = "data/fineweb10B/fineweb_train_*.bin" # input .bin to train on
+    train_files = "data/train_first_696M_tokens.bin" # input .bin to train on
     val_files = "data/fineweb10B/fineweb_val_*.bin" # input .bin to eval validation loss on
     val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
     train_seq_len = 48*1024 # FlexAttention sequence length
