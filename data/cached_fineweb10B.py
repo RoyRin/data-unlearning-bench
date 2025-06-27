@@ -1,3 +1,6 @@
+# this is a mod of https://github.com/KellerJordan/modded-nanogpt
+# original code is licensed under the MIT license
+
 import os
 import sys
 from huggingface_hub import hf_hub_download
