@@ -149,3 +149,34 @@ We use three different forget sets:
 # Contributing
 
 To set up git hooks properly, please run `git config core.hooksPath .githooks` (once). This will enable hooks such as running yapf on all python files.
+
+
+
+### nanogpt stuff
+Get the data:
+
+```
+python lite_saving_data.py
+```
+
+Launch pretraining models on 8 GPUs:
+
+```
+./launchlite.sh 0,1,2,3,4,5,6,7 1 data/fineweb10B/fineweb_train_subset.bin --save-checkpoint
+```
+
+Generate the random forget sets:
+
+```
+python exploring.py
+```
+
+Launch the oracle training on 8 GPUs:
+
+```
+# For 1% forget dataset
+./launchlite.sh 0,1,2,3,4,5,6,7 1 data/fineweb10B/1pct-retain-random.bin --save-checkpoint --checkpoint-folder rand-1pct
+
+# For 5% forget dataset  
+./launchlite.sh 0,1,2,3,4,5,6,7 1 data/fineweb10B/5pct-retain-random.bin --save-checkpoint --checkpoint-folder rand-5pct
+```

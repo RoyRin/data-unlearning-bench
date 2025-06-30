@@ -378,199 +378,227 @@ class DistributedDataLoader:
 # -----------------------------------------------------------------------------
 # int main
 
-@dataclass
-class Hyperparameters:
-    # data
-    train_bin = 'data/fineweb10B/fineweb_train_*.bin' # input .bin to train on
-    val_bin = 'data/fineweb10B/fineweb_val_*.bin' # input .bin to eval validation loss on
-    # optimization
-    batch_size = 8*64*1024 # batch size in tokens
-    max_device_batch_size = 64*1024 # batch size per device in tokens
-    num_iterations = 1390 # number of iterations to run
-    cooldown_frac = 0.4 # fraction of training spent cooling down the learning rate
-    bf16_embeds = True
-    # NEW FIELDS FOR FLEXIBLE TRAINING SETUP
-    num_gpus = 8  # expected number of GPUs / distributed processes
-    grad_accum_steps = 1  # gradient accumulation steps per optimizer update
-    # evaluation and logging
-    val_loss_every = 125 # every how many steps to evaluate val loss? 0 for only at the end
-    val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
-    # implementation
-    save_checkpoint = False
-args = Hyperparameters()
-# Override from environment variables if provided (allows launch script to change without code edit)
-args.num_gpus = int(os.environ.get('NUM_GPUS', args.num_gpus))
-args.grad_accum_steps = int(os.environ.get('GRAD_ACCUM_STEPS', args.grad_accum_steps))
+if __name__ == "__main__":
+    @dataclass
+    class Hyperparameters:
+        # data
+        train_bin = 'data/fineweb10B/fineweb_train_*.bin' # input .bin to train on
+        val_bin = 'data/fineweb10B/fineweb_val_*.bin' # input .bin to eval validation loss on
+        # optimization
+        batch_size = 8*64*1024 # batch size in tokens
+        max_device_batch_size = 64*1024 # batch size per device in tokens
+        num_iterations = 1390 # number of iterations to run
+        cooldown_frac = 0.4 # fraction of training spent cooling down the learning rate
+        bf16_embeds = True
+        # NEW FIELDS FOR FLEXIBLE TRAINING SETUP
+        num_gpus = 8  # expected number of GPUs / distributed processes
+        grad_accum_steps = 1  # gradient accumulation steps per optimizer update
+        # evaluation and logging
+        val_loss_every = 125 # every how many steps to evaluate val loss? 0 for only at the end
+        val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
+        # implementation
+        save_checkpoint = False
+        checkpoint_folder = None  # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
+        joinedbin = None  # if specified, train on this single .bin file for one pass instead of using train_bin pattern
+    args = Hyperparameters()
+    # Override from environment variables if provided (allows launch script to change without code edit)
+    args.num_gpus = int(os.environ.get('NUM_GPUS', args.num_gpus))
+    args.grad_accum_steps = int(os.environ.get('GRAD_ACCUM_STEPS', args.grad_accum_steps))
+    args.joinedbin = os.environ.get('JOINEDBIN', args.joinedbin)
+    args.save_checkpoint = os.environ.get('SAVE_CHECKPOINT', 'false').lower() == 'true'
+    args.checkpoint_folder = os.environ.get('CHECKPOINT_FOLDER', args.checkpoint_folder)
+    if args.checkpoint_folder == "":  # empty string should be treated as None
+        args.checkpoint_folder = None
 
-micro_bs = args.max_device_batch_size
+    micro_bs = args.max_device_batch_size
 
-# set up DDP (distributed data parallel). torchrun sets this env variable
-rank = int(os.environ['RANK'])
-local_rank = int(os.environ['LOCAL_RANK'])
-world_size = int(os.environ['WORLD_SIZE'])
-assert world_size == args.num_gpus, f"Mismatch between launched processes ({world_size}) and args.num_gpus ({args.num_gpus})"
-assert args.batch_size % (world_size * args.grad_accum_steps) == 0, "batch_size must be divisible by world_size * grad_accum_steps to keep effective batch size constant"
-per_device_tokens = args.batch_size // (world_size * args.grad_accum_steps)
-assert torch.cuda.is_available()
-torch.cuda.set_device(local_rank)
-dist.init_process_group(backend='nccl', device_id=torch.device(local_rank))
-dist.barrier()
-master_process = (rank == 0) # this process will do logging, checkpointing etc.
+    # set up DDP (distributed data parallel). torchrun sets this env variable
+    rank = int(os.environ['RANK'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
+    assert world_size == args.num_gpus, f"Mismatch between launched processes ({world_size}) and args.num_gpus ({args.num_gpus})"
+    assert args.batch_size % (world_size * args.grad_accum_steps) == 0, "batch_size must be divisible by world_size * grad_accum_steps to keep effective batch size constant"
+    per_device_tokens = args.batch_size // (world_size * args.grad_accum_steps)
+    assert torch.cuda.is_available()
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend='nccl', device_id=torch.device(local_rank))
+    dist.barrier()
+    master_process = (rank == 0) # this process will do logging, checkpointing etc.
 
-# begin logging
-logfile = None
-if master_process:
-    run_id = uuid.uuid4()
-    os.makedirs('logs', exist_ok=True)
-    logfile = f'logs/{run_id}.txt'
-    print(logfile)
-
-def print0(s, console=False):
+    # begin logging
+    logfile = None
     if master_process:
-        with open(logfile, 'a') as f:
-            if console:
-                print(s)
-            print(s, file=f)
+        run_id = uuid.uuid4()
+        os.makedirs('logs', exist_ok=True)
+        logfile = f'logs/{run_id}.txt'
+        print(logfile)
 
-# begin by printing this file (the Python code)
-print0(code)
-print0('='*100)
-# log information about the hardware/software environment this is running on
-print0(f'Running Python {sys.version}')
-print0(f'Running PyTorch {torch.version.__version__} compiled for CUDA {torch.version.cuda}')
-print0(subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout)
-print0('='*100)
+    def print0(s, console=False):
+        if master_process:
+            with open(logfile, 'a') as f:
+                if console:
+                    print(s)
+                print(s, file=f)
 
-# load data
-train_loader = DistributedDataLoader(args.train_bin)
-val_loader = DistributedDataLoader(args.val_bin)
-print0(f'Training dataloader files: {train_loader.files}')
-print0(f'Validation dataloader files: {val_loader.files}')
-print0('='*100)
+    # begin by printing this file (the Python code)
+    print0(code)
+    print0('='*100)
+    # log information about the hardware/software environment this is running on
+    print0(f'Running Python {sys.version}')
+    print0(f'Running PyTorch {torch.version.__version__} compiled for CUDA {torch.version.cuda}')
+    print0(subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).stdout)
+    print0('='*100)
 
-# there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency. suggested to me by @Grad62304977.
-# this originates from Karpathy's experiments.
-model = GPT(vocab_size=50304, num_layers=12, num_heads=6, model_dim=768)
-model = model.cuda()
-if args.bf16_embeds:
-    for m in model.modules():
-        if isinstance(m, nn.Embedding):
-            m.bfloat16()
-model = torch.compile(model)
-ddp_model = DDP(model, device_ids=[local_rank], broadcast_buffers=False, gradient_as_bucket_view=True)
-
-# collect the parameters to optimize
-hidden_matrix_params = [p for p in model.blocks.parameters() if p.ndim == 2]
-embed_params = [model.embed.weight, *model.value_embeds.parameters()]
-scalar_params = [p for p in model.parameters() if p.ndim < 2]
-head_params = [model.lm_head.weight]
-
-# init the optimizer(s)
-optimizer1 = torch.optim.Adam([dict(params=embed_params, lr=0.6),
-                               dict(params=head_params, lr=0.008),
-                               dict(params=scalar_params, lr=0.04)],
-                              betas=(0.8, 0.95), fused=True)
-optimizer2 = Muon(hidden_matrix_params, lr=0.05, momentum=0.95)
-optimizers = [optimizer1, optimizer2]
-
-# learning rate schedule: stable then decay
-def get_lr(it):
-    t = 1 - it / args.num_iterations # time remaining in training
-    assert 1 >= t > 0
-    # 1) constant lr for first part of training
-    if t >= args.cooldown_frac:
-        return 1.0
-    # 2) then linear cooldown
+    # load data
+    if args.joinedbin is not None:
+        print0(f'Running in joinedbin mode: training on {args.joinedbin}')
+        print0('The data will be passed exactly once (single epoch)')
+        train_loader = DistributedDataLoader(args.joinedbin)
+        # Calculate number of iterations based on dataset size
+        header = torch.from_file(args.joinedbin, False, 256, dtype=torch.int32)
+        total_tokens = int(header[2])
+        args.num_iterations = total_tokens // args.batch_size
+        print0(f'Dataset contains {total_tokens:,} tokens, will train for {args.num_iterations} steps')
     else:
-        return t / args.cooldown_frac
-schedulers = [torch.optim.lr_scheduler.LambdaLR(opt, get_lr) for opt in optimizers]
+        train_loader = DistributedDataLoader(args.train_bin)
 
-# sliding window size schedule: linear increase over training in chunks of 128 from 128 -> 1792. By @fernbear.bsky.social
-def get_sliding_window_blocks(it):
-    x = it / args.num_iterations # training progress
-    assert 0 <= x <= 1
-    return int(((1 - x) * 128 + x * 1856) // 128)
-sliding_window_num_blocks = torch.tensor(1, dtype=torch.int32, device='cuda')
+    val_loader = DistributedDataLoader(args.val_bin)
+    print0(f'Training dataloader files: {train_loader.files}')
+    print0(f'Validation dataloader files: {val_loader.files}')
+    print0('='*100)
 
-# Start training loop
-training_time_ms = 0
-# start the clock
-torch.cuda.synchronize()
-t0 = time.perf_counter()
-# begin training
-train_steps = args.num_iterations
-for step in range(train_steps + 1):
-    last_step = (step == train_steps)
-    # This effectively ignores timing first 10 steps, which are slower for weird reasons.
-    # Alternately, and slightly more correctly in terms of benchmarking, we could do 10
-    # steps with dummy data first, and then re-initialize the model and reset the loader.
-    if step == 10:
-        training_time_ms = 0
-        t0 = time.perf_counter()
-    timed_steps = float('nan') if step <= 11 else (step - 10) + 1 # <= 11 to avoid bug in val
+    # there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency. suggested to me by @Grad62304977.
+    # this originates from Karpathy's experiments.
+    model = GPT(vocab_size=50304, num_layers=12, num_heads=6, model_dim=768)
+    model = model.cuda()
+    if args.bf16_embeds:
+        for m in model.modules():
+            if isinstance(m, nn.Embedding):
+                m.bfloat16()
+    model = torch.compile(model)
+    ddp_model = DDP(model, device_ids=[local_rank], broadcast_buffers=False, gradient_as_bucket_view=True)
 
-    sliding_window_num_blocks.copy_(get_sliding_window_blocks(step))
+    # collect the parameters to optimize
+    hidden_matrix_params = [p for p in model.blocks.parameters() if p.ndim == 2]
+    embed_params = [model.embed.weight, *model.value_embeds.parameters()]
+    scalar_params = [p for p in model.parameters() if p.ndim < 2]
+    head_params = [model.lm_head.weight]
 
-    # --------------- VALIDATION SECTION -----------------
-    if last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0):
-        # stop the clock
-        torch.cuda.synchronize()
-        training_time_ms += 1000 * (time.perf_counter() - t0)
-        # run validation batches
-        model.eval()
-        val_loader.reset()
-        val_loss = 0.0
-        # calculate the number of steps to take in the val loop.
-        val_batch_size = world_size * micro_bs
-        assert args.val_tokens % val_batch_size == 0
-        val_steps = args.val_tokens // val_batch_size
-        for _ in range(val_steps):
-            with torch.no_grad():
-                inputs_val, targets_val = val_loader.next_batch(val_batch_size)
-                val_loss += ddp_model(inputs_val, targets_val, sliding_window_num_blocks)
-        dist.all_reduce(val_loss, op=dist.ReduceOp.AVG)
-        val_loss /= val_steps
+    # init the optimizer(s)
+    optimizer1 = torch.optim.Adam([dict(params=embed_params, lr=0.6),
+                                   dict(params=head_params, lr=0.008),
+                                   dict(params=scalar_params, lr=0.04)],
+                                  betas=(0.8, 0.95), fused=True)
+    optimizer2 = Muon(hidden_matrix_params, lr=0.05, momentum=0.95)
+    optimizers = [optimizer1, optimizer2]
+
+    # learning rate schedule: stable then decay
+    def get_lr(it):
+        t = 1 - it / args.num_iterations # time remaining in training
+        assert 1 >= t > 0
+        # 1) constant lr for first part of training
+        if t >= args.cooldown_frac:
+            return 1.0
+        # 2) then linear cooldown
+        else:
+            return t / args.cooldown_frac
+    schedulers = [torch.optim.lr_scheduler.LambdaLR(opt, get_lr) for opt in optimizers]
+
+    # sliding window size schedule: linear increase over training in chunks of 128 from 128 -> 1792. By @fernbear.bsky.social
+    def get_sliding_window_blocks(it):
+        x = it / args.num_iterations # training progress
+        assert 0 <= x <= 1
+        return int(((1 - x) * 128 + x * 1856) // 128)
+    sliding_window_num_blocks = torch.tensor(1, dtype=torch.int32, device='cuda')
+
+    # Start training loop
+    training_time_ms = 0
+    # start the clock
+    torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    # begin training
+    train_steps = args.num_iterations
+    for step in range(train_steps + 1):
+        last_step = (step == train_steps)
+        # This effectively ignores timing first 10 steps, which are slower for weird reasons.
+        # Alternately, and slightly more correctly in terms of benchmarking, we could do 10
+        # steps with dummy data first, and then re-initialize the model and reset the loader.
+        if step == 10:
+            training_time_ms = 0
+            t0 = time.perf_counter()
+        timed_steps = float('nan') if step <= 11 else (step - 10) + 1 # <= 11 to avoid bug in val
+
+        sliding_window_num_blocks.copy_(get_sliding_window_blocks(step))
+
+        # --------------- VALIDATION SECTION -----------------
+        if last_step or (args.val_loss_every > 0 and step % args.val_loss_every == 0):
+            # stop the clock
+            torch.cuda.synchronize()
+            training_time_ms += 1000 * (time.perf_counter() - t0)
+            # run validation batches
+            model.eval()
+            val_loader.reset()
+            val_loss = 0.0
+            # calculate the number of steps to take in the val loop.
+            val_batch_size = world_size * micro_bs
+            assert args.val_tokens % val_batch_size == 0
+            val_steps = args.val_tokens // val_batch_size
+            for _ in range(val_steps):
+                with torch.no_grad():
+                    inputs_val, targets_val = val_loader.next_batch(val_batch_size)
+                    val_loss += ddp_model(inputs_val, targets_val, sliding_window_num_blocks)
+            dist.all_reduce(val_loss, op=dist.ReduceOp.AVG)
+            val_loss /= val_steps
+            # logging
+            print0(f'step:{step}/{train_steps} val_loss:{val_loss:.4f} train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms/(timed_steps-1):.2f}ms', console=True)
+            # start the clock again
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+
+        if last_step:
+            if master_process and args.save_checkpoint:
+                log = dict(step=step, code=code, model=model.state_dict(), optimizers=[opt.state_dict() for opt in optimizers])
+                # Use checkpoint_folder if provided, otherwise use run_id
+                if args.checkpoint_folder is not None:
+                    checkpoint_dir = f'logs/{args.checkpoint_folder}'
+                    checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
+                else:
+                    checkpoint_dir = f'logs/{run_id}'
+                    checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
+                
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                torch.save(log, checkpoint_path)
+                print0(f'Saved checkpoint to: {checkpoint_path}')
+            # the last step only has the validation loop, so break to avoid training
+            break
+
+        # --------------- TRAINING SECTION -----------------
+        model.train()
+
+        global_tokens_per_accum = args.batch_size // args.grad_accum_steps  # tokens processed per accumulation step across all GPUs
+        assert global_tokens_per_accum % world_size == 0
+        for accum_idx in range(args.grad_accum_steps):
+            inputs_train, targets_train = train_loader.next_batch(global_tokens_per_accum)
+            # ensure we can split into micro batches that fit in memory
+            assert len(inputs_train) <= micro_bs or len(inputs_train) % micro_bs == 0
+            for micro_inputs_train, micro_targets_train in zip(inputs_train.split(micro_bs), targets_train.split(micro_bs)):
+                loss = ddp_model(micro_inputs_train, micro_targets_train, sliding_window_num_blocks) / args.grad_accum_steps
+                loss.backward()
+
+        # momentum warmup for Muon
+        frac = min(step/300, 1)
+        for group in optimizer2.param_groups:
+            group['momentum'] = (1 - frac) * 0.85 + frac * 0.95
+        # step the optimizers and schedulers
+        for opt, sched in zip(optimizers, schedulers):
+            opt.step()
+            if step != train_steps-1:
+                sched.step()
+        # null the gradients
+        model.zero_grad(set_to_none=True)
         # logging
-        print0(f'step:{step}/{train_steps} val_loss:{val_loss:.4f} train_time:{training_time_ms:.0f}ms step_avg:{training_time_ms/(timed_steps-1):.2f}ms', console=True)
-        # start the clock again
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
+        approx_time = training_time_ms + 1000 * (time.perf_counter() - t0)
+        print0(f'step:{step+1}/{train_steps} train_time:{approx_time:.0f}ms step_avg:{approx_time/timed_steps:.2f}ms', console=True)
 
-    if last_step:
-        if master_process and args.save_checkpoint:
-            log = dict(step=step, code=code, model=model.state_dict(), optimizers=[opt.state_dict() for opt in optimizers])
-            os.makedirs(f'logs/{run_id}', exist_ok=True)
-            torch.save(log, f'logs/{run_id}/state_step{step:06d}.pt')
-        # the last step only has the validation loop, so break to avoid training
-        break
-
-    # --------------- TRAINING SECTION -----------------
-    model.train()
-
-    global_tokens_per_accum = args.batch_size // args.grad_accum_steps  # tokens processed per accumulation step across all GPUs
-    assert global_tokens_per_accum % world_size == 0
-    for accum_idx in range(args.grad_accum_steps):
-        inputs_train, targets_train = train_loader.next_batch(global_tokens_per_accum)
-        # ensure we can split into micro batches that fit in memory
-        assert len(inputs_train) <= micro_bs or len(inputs_train) % micro_bs == 0
-        for micro_inputs_train, micro_targets_train in zip(inputs_train.split(micro_bs), targets_train.split(micro_bs)):
-            loss = ddp_model(micro_inputs_train, micro_targets_train, sliding_window_num_blocks) / args.grad_accum_steps
-            loss.backward()
-
-    # momentum warmup for Muon
-    frac = min(step/300, 1)
-    for group in optimizer2.param_groups:
-        group['momentum'] = (1 - frac) * 0.85 + frac * 0.95
-    # step the optimizers and schedulers
-    for opt, sched in zip(optimizers, schedulers):
-        opt.step()
-        if step != train_steps-1:
-            sched.step()
-    # null the gradients
-    model.zero_grad(set_to_none=True)
-    # logging
-    approx_time = training_time_ms + 1000 * (time.perf_counter() - t0)
-    print0(f'step:{step+1}/{train_steps} train_time:{approx_time:.0f}ms step_avg:{approx_time/timed_steps:.2f}ms', console=True)
-
-print0(f'peak memory consumption: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB')
-dist.destroy_process_group()
+    print0(f'peak memory consumption: {torch.cuda.max_memory_allocated() // 1024 // 1024} MiB')
+    dist.destroy_process_group()
