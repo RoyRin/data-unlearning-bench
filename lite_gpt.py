@@ -399,6 +399,7 @@ if __name__ == "__main__":
         # implementation
         save_checkpoint = False
         checkpoint_folder = None  # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
+        run_description = None  # if specified, include this description in checkpoint folder name
         joinedbin = None  # if specified, train on this single .bin file for one pass instead of using train_bin pattern
     args = Hyperparameters()
     # Override from environment variables if provided (allows launch script to change without code edit)
@@ -407,8 +408,11 @@ if __name__ == "__main__":
     args.joinedbin = os.environ.get('JOINEDBIN', args.joinedbin)
     args.save_checkpoint = os.environ.get('SAVE_CHECKPOINT', 'false').lower() == 'true'
     args.checkpoint_folder = os.environ.get('CHECKPOINT_FOLDER', args.checkpoint_folder)
+    args.run_description = os.environ.get('RUN_DESCRIPTION', args.run_description)
     if args.checkpoint_folder == "":  # empty string should be treated as None
         args.checkpoint_folder = None
+    if args.run_description == "":  # empty string should be treated as None
+        args.run_description = None
 
     micro_bs = args.max_device_batch_size
 
@@ -558,14 +562,19 @@ if __name__ == "__main__":
         if last_step:
             if master_process and args.save_checkpoint:
                 log = dict(step=step, code=code, model=model.state_dict(), optimizers=[opt.state_dict() for opt in optimizers])
-                # Use checkpoint_folder if provided, otherwise use run_id
+                # Build checkpoint directory name with optional run description
                 if args.checkpoint_folder is not None:
-                    checkpoint_dir = f'logs/{args.checkpoint_folder}'
-                    checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
+                    if args.run_description is not None:
+                        checkpoint_dir = f'logs/{args.checkpoint_folder}_{args.run_description}'
+                    else:
+                        checkpoint_dir = f'logs/{args.checkpoint_folder}'
                 else:
-                    checkpoint_dir = f'logs/{run_id}'
-                    checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
+                    if args.run_description is not None:
+                        checkpoint_dir = f'logs/{run_id}_{args.run_description}'
+                    else:
+                        checkpoint_dir = f'logs/{run_id}'
                 
+                checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
                 os.makedirs(checkpoint_dir, exist_ok=True)
                 torch.save(log, checkpoint_path)
                 print0(f'Saved checkpoint to: {checkpoint_path}')

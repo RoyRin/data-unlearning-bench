@@ -271,7 +271,13 @@ if __name__ == "__main__":
     # Extract batch losses from checkpoint
     bin_path = output_file
     
-    if os.path.exists(args.checkpoint_path):
+    # Check if batch losses file already exists
+    if os.path.exists(args.losses_output_path):
+        print(f'Found existing batch losses file: {args.losses_output_path}')
+        print('Skipping batch loss extraction')
+        print(f'\nInspecting saved batch losses...')
+        load_and_inspect_batch_losses(args.losses_output_path, args.split_batch_factor)
+    elif os.path.exists(args.checkpoint_path):
         print(f'\nExtracting batch losses from checkpoint...')
         batch_losses = extract_batch_losses_from_checkpoint(
             checkpoint_path=args.checkpoint_path,
@@ -288,8 +294,3 @@ if __name__ == "__main__":
     else:
         print(f'Checkpoint not found: {args.checkpoint_path}')
         print('Please update the checkpoint_path argument with the correct path')
-        
-        # If checkpoint doesn't exist but losses file does, just inspect it
-        if os.path.exists(args.losses_output_path):
-            print(f'\nFound existing batch losses file, inspecting...')
-            load_and_inspect_batch_losses(args.losses_output_path, args.split_batch_factor)

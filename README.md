@@ -153,6 +153,18 @@ To set up git hooks properly, please run `git config core.hooksPath .githooks` (
 
 
 ### nanogpt stuff
+
+<!-- TODO: The following items need to be added to complete the nanogpt/lite_gpt functionality:
+1. Add documentation for the new --run-description parameter in launchlite.sh
+2. Add examples showing how to use the SLURM scripts in slurm_files/
+3. Create lite_saving_data.py script for data preparation
+4. Create exploring.py script for generating random forget sets  
+5. Add documentation for checkpoint folder naming with run descriptions
+6. Add setup instructions for the required environment and dependencies
+7. Document the data directory structure and expected file formats
+8. Add examples of how to use environment variables (NUM_GPUS, GRAD_ACCUM_STEPS, etc.)
+-->
+
 Get the data:
 
 ```
@@ -180,3 +192,10 @@ Launch the oracle training on 8 GPUs:
 # For 5% forget dataset  
 ./launchlite.sh 0,1,2,3,4,5,6,7 1 data/fineweb10B/5pct-retain-random.bin --save-checkpoint --checkpoint-folder rand-5pct
 ```
+
+For SLURM users, see the example scripts in `slurm_files/` directory for running 100 experiments each:
+- `launch_pretrain.slurm` - Baseline pretraining
+- `launch_oracles_loss_1pt.slurm` - Oracle training with 1% loss-based retain set  
+- `launch_oracles_loss_5pt.slurm` - Oracle training with 5% loss-based retain set
+- `launch_oracles_random_1pt.slurm` - Oracle training with 1% random retain set
+- `launch_oracles_random_5pt.slurm` - Oracle training with 5% random retain set

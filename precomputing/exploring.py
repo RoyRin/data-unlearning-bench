@@ -38,6 +38,13 @@ def extract_tokens_for_batches(all_tokens, batch_indices, batch_size, micro_batc
     micro_batches_per_step = batch_size // micro_batch_size
     selected_tokens_list = []
     
+    print(f"Extracting tokens for {len(batch_indices)} batches...")
+    print(f"Total tokens available: {len(all_tokens):,}")
+    print(f"Batch size: {batch_size:,}, Micro batch size: {micro_batch_size:,}")
+    print(f"Micro batches per step: {micro_batches_per_step}")
+    
+    tokens_extracted = 0
+    
     for step in tqdm(batch_indices, desc="Extracting tokens for selected batches"):
         for micro_idx in range(micro_batches_per_step):
             micro_batch_idx = step * micro_batches_per_step + micro_idx
@@ -45,10 +52,16 @@ def extract_tokens_for_batches(all_tokens, batch_indices, batch_size, micro_batc
             end_pos = start_pos + micro_batch_size + 1
             
             if end_pos > len(all_tokens):
+                print(f"WARNING: Batch {step}, micro batch {micro_idx} exceeds token limit")
+                print(f"  Required end_pos: {end_pos:,}, Available tokens: {len(all_tokens):,}")
                 break
                 
             micro_batch_tokens = all_tokens[start_pos:end_pos]
             selected_tokens_list.append(micro_batch_tokens)
+            tokens_extracted += len(micro_batch_tokens)
+    
+    print(f"Tokens extracted: {tokens_extracted:,}")
+    print(f"Expected tokens: {len(batch_indices) * batch_size:,}")
     
     # Concatenate all selected tokens
     if selected_tokens_list:
@@ -56,6 +69,7 @@ def extract_tokens_for_batches(all_tokens, batch_indices, batch_size, micro_batc
     else:
         selected_tokens = torch.empty(0, dtype=all_tokens.dtype)
     
+    print(f"Final concatenated tokens: {len(selected_tokens):,}")
     return selected_tokens
 
 
@@ -64,6 +78,10 @@ def extract_tokens_for_retain_batches(all_tokens, forget_batch_indices, total_st
     # Get all batch indices except the forget ones
     all_batch_indices = set(range(total_steps))
     retain_batch_indices = sorted(list(all_batch_indices - set(forget_batch_indices)))
+    
+    print(f"Retain extraction: {len(retain_batch_indices)} retain batches vs {len(forget_batch_indices)} forget batches")
+    print(f"Total expected batches: {total_steps}")
+    print(f"Retain + forget = {len(retain_batch_indices) + len(forget_batch_indices)}")
     
     return extract_tokens_for_batches(all_tokens, retain_batch_indices, batch_size, micro_batch_size)
 
@@ -262,10 +280,125 @@ def process_and_save_percentage(tokens, batch_size, micro_batch_size, num_traini
     return selected_batch_indices, forget_filename, retain_filename
 
 
+def load_batch_losses(batch_losses_path):
+    """Load batch losses and return sorted indices (highest loss first)"""
+    print(f"Loading batch losses from: {batch_losses_path}")
+    
+    # Load the batch losses
+    batch_losses_dict = torch.load(batch_losses_path, map_location='cpu')
+    print(f"Loaded batch losses as dict with {len(batch_losses_dict)} entries")
+    
+    # Convert dictionary to tensors
+    batch_indices = torch.tensor(list(batch_losses_dict.keys()))
+    batch_losses = torch.tensor(list(batch_losses_dict.values()))
+    
+    print(f"Batch indices range: {batch_indices.min().item()} to {batch_indices.max().item()}")
+    print(f"Batch losses shape: {batch_losses.shape}")
+    print(f"Loss statistics:")
+    print(f"  Min loss: {batch_losses.min().item():.6f}")
+    print(f"  Max loss: {batch_losses.max().item():.6f}")
+    print(f"  Mean loss: {batch_losses.mean().item():.6f}")
+    print(f"  Std loss: {batch_losses.std().item():.6f}")
+    
+    # Sort indices by loss (descending order - highest loss first)
+    sorted_loss_indices = torch.argsort(batch_losses, descending=True)
+    sorted_batch_indices = batch_indices[sorted_loss_indices]
+    
+    print(f"Highest loss batches (first 10): {sorted_batch_indices[:10].tolist()}")
+    print(f"Corresponding losses: {batch_losses[sorted_loss_indices[:10]].tolist()}")
+    
+    return batch_losses_dict, batch_indices, batch_losses, sorted_batch_indices
+
+
+def select_batches_by_loss(sorted_batch_indices, target_percentage, num_training_steps, batch_indices):
+    """Select top batches based on highest losses"""
+    target_batches = max(1, int(num_training_steps * target_percentage))
+    selected_batch_indices = sorted_batch_indices[:target_batches].numpy()
+    selected_batch_indices = np.sort(selected_batch_indices)  # Sort for easier tracking
+    
+    # Assert that selected indices are valid
+    assert all(idx >= 0 for idx in selected_batch_indices), "Found negative batch index"
+    assert all(idx < num_training_steps for idx in selected_batch_indices), f"Found batch index >= {num_training_steps}"
+    
+    # Assert that all selected indices exist in the batch_indices
+    available_indices_set = set(batch_indices.numpy())
+    selected_indices_set = set(selected_batch_indices)
+    missing_indices = selected_indices_set - available_indices_set
+    assert len(missing_indices) == 0, f"Selected indices not found in batch losses: {missing_indices}"
+    
+    print(f"\n" + "=" * 60)
+    print(f"{target_percentage * 100}% LOSS-BASED SELECTION")
+    print("=" * 60)
+    print(f"Target percentage: {target_percentage * 100}%")
+    print(f"Target batches: {target_batches}")
+    print(f"Selected batch indices (first 10): {selected_batch_indices[:10]}")
+    if len(selected_batch_indices) > 10:
+        print(f"Selected batch indices (last 10): {selected_batch_indices[-10:]}")
+    print(f"✓ All selected indices are valid and exist in batch losses")
+    
+    return selected_batch_indices
+
+
+def process_and_save_percentage_loss(tokens, batch_size, micro_batch_size, num_training_steps, 
+                                   target_percentage, sorted_batch_indices, batch_losses, batch_indices):
+    """Process a specific percentage based on highest losses and save forget/retain .bin files"""
+    
+    # Get selection for this percentage based on loss
+    selected_batch_indices = select_batches_by_loss(sorted_batch_indices, target_percentage, num_training_steps, batch_indices)
+    
+    # Create output directory if it doesn't exist
+    output_dir = 'data/fineweb10B'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Define output filenames (using 'loss' instead of 'random')
+    pct_str = f"{int(target_percentage * 100)}pct"
+    forget_filename = f'{output_dir}/{pct_str}-forget-loss.bin'
+    retain_filename = f'{output_dir}/{pct_str}-retain-loss.bin'
+    
+    print(f"\n" + "=" * 60)
+    print(f"SAVING {target_percentage * 100}% LOSS-BASED FORGET/RETAIN DATASETS")
+    print("=" * 60)
+    
+    # Show loss statistics for selected batches
+    # Map selected batch indices to their loss values
+    batch_losses_dict_from_params = {batch_indices[i].item(): batch_losses[i].item() for i in range(len(batch_indices))}
+    selected_losses = torch.tensor([batch_losses_dict_from_params[idx] for idx in selected_batch_indices])
+    print(f"Selected batches loss statistics:")
+    print(f"  Min loss: {selected_losses.min().item():.6f}")
+    print(f"  Max loss: {selected_losses.max().item():.6f}")
+    print(f"  Mean loss: {selected_losses.mean().item():.6f}")
+    print(f"  Std loss: {selected_losses.std().item():.6f}")
+    
+    # Extract and save forget tokens (selected batches with highest losses)
+    print(f"\nExtracting forget tokens ({len(selected_batch_indices)} highest-loss batches)...")
+    forget_tokens = extract_tokens_for_batches(tokens, selected_batch_indices, batch_size, micro_batch_size)
+    save_tokens_to_bin(forget_tokens, forget_filename)
+    
+    # Extract and save retain tokens (remaining batches)
+    print(f"\nExtracting retain tokens (remaining batches)...")
+    retain_tokens = extract_tokens_for_retain_batches(tokens, selected_batch_indices, num_training_steps, batch_size, micro_batch_size)
+    save_tokens_to_bin(retain_tokens, retain_filename)
+    
+    # Verification
+    total_tokens_in_files = len(forget_tokens) + len(retain_tokens)
+    expected_tokens = num_training_steps * batch_size
+    
+    print(f"\n" + "=" * 60)
+    print(f"{target_percentage * 100}% LOSS-BASED DATASET VERIFICATION")
+    print("=" * 60)
+    print(f"Forget tokens: {len(forget_tokens):,}")
+    print(f"Retain tokens: {len(retain_tokens):,}")
+    print(f"Total tokens in files: {total_tokens_in_files:,}")
+    print(f"Expected total tokens: {expected_tokens:,}")
+    print(f"Match: {'✓' if total_tokens_in_files == expected_tokens else '✗'}")
+    
+    return selected_batch_indices, forget_filename, retain_filename
+
+
 def main():
     """Main function to run the data loading and selection process"""
-    print("DETERMINISTIC RANDOM DATA SELECTION SCRIPT")
-    print("Processing 1% and 5% selections with fixed seeds for reproducible results")
+    print("DATA SELECTION SCRIPT: RANDOM AND LOSS-BASED MODES")
+    print("Processing 1% and 5% selections with both random and loss-based methods")
     
     # Load data initially with 1% to get the base data
     tokens, batch_size, micro_batch_size, selected_batch_indices_1pct, num_training_steps = load_training_data_and_select_subset(0.01)
@@ -273,40 +406,90 @@ def main():
     # Create dataloader and demonstrate for 1%
     dataloader_1pct = create_dataloader_and_demonstrate(tokens, batch_size, micro_batch_size, selected_batch_indices_1pct)
     
-    # Process and save 1% datasets
-    selected_1pct, forget_1pct_file, retain_1pct_file = process_and_save_percentage(
+    print(f"\n" + "=" * 80)
+    print("RANDOM-BASED SELECTION")
+    print("=" * 80)
+    
+    # Process and save 1% datasets (random)
+    selected_1pct_random, forget_1pct_random_file, retain_1pct_random_file = process_and_save_percentage(
         tokens, batch_size, micro_batch_size, num_training_steps, 0.01)
     
-    # Process and save 5% datasets  
-    selected_5pct, forget_5pct_file, retain_5pct_file = process_and_save_percentage(
+    # Process and save 5% datasets (random)
+    selected_5pct_random, forget_5pct_random_file, retain_5pct_random_file = process_and_save_percentage(
         tokens, batch_size, micro_batch_size, num_training_steps, 0.05)
     
-    print(f"\n" + "=" * 60)
+    print(f"\n" + "=" * 80)
+    print("LOSS-BASED SELECTION")
+    print("=" * 80)
+    
+    # Load batch losses and get sorted indices
+    batch_losses_path = '/home/ppol/data-unlearning-bench/data/fineweb10B/batch_losses.pt'
+    batch_losses_dict, batch_indices, batch_losses, sorted_batch_indices = load_batch_losses(batch_losses_path)
+    
+    # Verify that the number of losses matches the number of training steps
+    if len(batch_losses) != num_training_steps:
+        print(f"WARNING: Number of batch losses ({len(batch_losses)}) doesn't match number of training steps ({num_training_steps})")
+        print("Using the minimum of the two for safety")
+        max_steps = min(len(batch_losses), num_training_steps)
+        sorted_batch_indices = sorted_batch_indices[:max_steps]
+    
+    # Process and save 1% datasets (loss-based)
+    selected_1pct_loss, forget_1pct_loss_file, retain_1pct_loss_file = process_and_save_percentage_loss(
+        tokens, batch_size, micro_batch_size, num_training_steps, 0.01, sorted_batch_indices, batch_losses, batch_indices)
+    
+    # Process and save 5% datasets (loss-based)
+    selected_5pct_loss, forget_5pct_loss_file, retain_5pct_loss_file = process_and_save_percentage_loss(
+        tokens, batch_size, micro_batch_size, num_training_steps, 0.05, sorted_batch_indices, batch_losses, batch_indices)
+    
+    print(f"\n" + "=" * 80)
     print("FINAL SUMMARY")
-    print("=" * 60)
+    print("=" * 80)
     print(f"✓ Loaded {len(tokens):,} total tokens")
     print(f"✓ Total training steps available: {num_training_steps}")
     print(f"✓ Each batch contains {batch_size:,} tokens")
-    print(f"\n1% Selection:")
-    print(f"  ✓ Selected {len(selected_1pct)} batches")
-    print(f"  ✓ Forget dataset: {forget_1pct_file}")
-    print(f"  ✓ Retain dataset: {retain_1pct_file}")
-    print(f"\n5% Selection:")
-    print(f"  ✓ Selected {len(selected_5pct)} batches")
-    print(f"  ✓ Forget dataset: {forget_5pct_file}")
-    print(f"  ✓ Retain dataset: {retain_5pct_file}")
-    print(f"\n✓ All operations are deterministic with fixed seeds")
+    
+    print(f"\nRANDOM-BASED SELECTION:")
+    print(f"  1% Selection: {len(selected_1pct_random)} batches")
+    print(f"    ✓ Forget dataset: {forget_1pct_random_file}")
+    print(f"    ✓ Retain dataset: {retain_1pct_random_file}")
+    print(f"  5% Selection: {len(selected_5pct_random)} batches")
+    print(f"    ✓ Forget dataset: {forget_5pct_random_file}")
+    print(f"    ✓ Retain dataset: {retain_5pct_random_file}")
+    
+    print(f"\nLOSS-BASED SELECTION:")
+    print(f"  1% Selection: {len(selected_1pct_loss)} batches")
+    print(f"    ✓ Forget dataset: {forget_1pct_loss_file}")
+    print(f"    ✓ Retain dataset: {retain_1pct_loss_file}")
+    print(f"  5% Selection: {len(selected_5pct_loss)} batches")
+    print(f"    ✓ Forget dataset: {forget_5pct_loss_file}")
+    print(f"    ✓ Retain dataset: {retain_5pct_loss_file}")
+    
+    print(f"\n✓ All operations are deterministic")
+    print(f"✓ Random selections use fixed seeds")
+    print(f"✓ Loss-based selections use highest-loss batches")
     
     return {
         'tokens': tokens,
         'dataloader_1pct': dataloader_1pct,
-        '1pct_indices': selected_1pct,
-        '5pct_indices': selected_5pct,
+        'random': {
+            '1pct_indices': selected_1pct_random,
+            '5pct_indices': selected_5pct_random,
+        },
+        'loss_based': {
+            '1pct_indices': selected_1pct_loss,
+            '5pct_indices': selected_5pct_loss,
+            'batch_losses': batch_losses,
+            'sorted_indices': sorted_batch_indices,
+        },
         'files': {
-            '1pct_forget': forget_1pct_file,
-            '1pct_retain': retain_1pct_file,
-            '5pct_forget': forget_5pct_file,
-            '5pct_retain': retain_5pct_file
+            '1pct_forget_random': forget_1pct_random_file,
+            '1pct_retain_random': retain_1pct_random_file,
+            '5pct_forget_random': forget_5pct_random_file,
+            '5pct_retain_random': retain_5pct_random_file,
+            '1pct_forget_loss': forget_1pct_loss_file,
+            '1pct_retain_loss': retain_1pct_loss_file,
+            '5pct_forget_loss': forget_5pct_loss_file,
+            '5pct_retain_loss': retain_5pct_loss_file,
         }
     }
 
