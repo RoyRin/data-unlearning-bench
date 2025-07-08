@@ -12,12 +12,13 @@ import glob
 import subprocess
 import contextlib
 from dataclasses import dataclass
-
+from pathlib import Path
 import torch
 # added to fix compilation error
 import torch._inductor.config as config
 config.max_autotune_gemm_backends = "ATEN,TRITON"  # or just "ATEN"
 
+os.environ['TORCHINDUCTOR_DISABLE_CACHE'] = '1'
 
 torch.empty(1, device='cuda', requires_grad=True).backward()
 from torch import nn
@@ -404,7 +405,9 @@ if __name__ == "__main__":
         val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
         # implementation
         save_checkpoint = False
-        checkpoint_folder = None  # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
+        checkpoint_folder = Path("/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/pretrain_models/")  # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
+        if not checkpoint_folder.exists():
+            checkpoint_folder = None
         run_description = None  # if specified, include this description in checkpoint folder name
         joinedbin = None  # if specified, train on this single .bin file for one pass instead of using train_bin pattern
     args = Hyperparameters()
@@ -414,6 +417,7 @@ if __name__ == "__main__":
     args.joinedbin = os.environ.get('JOINEDBIN', args.joinedbin)
     args.save_checkpoint = os.environ.get('SAVE_CHECKPOINT', 'false').lower() == 'true'
     args.checkpoint_folder = os.environ.get('CHECKPOINT_FOLDER', args.checkpoint_folder)
+    args.checkpoint_folder = Path(args.checkpoint_folder)
     args.run_description = os.environ.get('RUN_DESCRIPTION', args.run_description)
     if args.checkpoint_folder == "":  # empty string should be treated as None
         args.checkpoint_folder = None
@@ -439,8 +443,9 @@ if __name__ == "__main__":
     logfile = None
     if master_process:
         run_id = uuid.uuid4()
-        os.makedirs('logs', exist_ok=True)
-        logfile = f'logs/{run_id}.txt'
+        log_dir = Path('/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/logs')
+        os.makedirs(log_dir, exist_ok=True)
+        logfile = log_dir / f'{run_id}.txt'
         print(logfile)
 
     def print0(s, console=False):
