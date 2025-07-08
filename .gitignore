@@ -1,3 +1,5 @@
+ignore
+logs
 __pycache__
 poetry.lock
 __pycache__

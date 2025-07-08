@@ -46,6 +46,7 @@ while [ $i -le $# ]; do
     i=$((i + 1))
 done
 
+
 # make GPU list absolute (remove trailing/leading spaces)
 GPU_IDS=$(echo "$GPU_IDS" | tr -d '[:space:]')
 

@@ -14,6 +14,11 @@ import contextlib
 from dataclasses import dataclass
 
 import torch
+# added to fix compilation error
+import torch._inductor.config as config
+config.max_autotune_gemm_backends = "ATEN,TRITON"  # or just "ATEN"
+
+
 torch.empty(1, device='cuda', requires_grad=True).backward()
 from torch import nn
 import torch.nn.functional as F
@@ -21,6 +26,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 # use of FlexAttention contributed by @KoszarskyB
 from torch.nn.attention.flex_attention import BlockMask, flex_attention
+
 
 # -----------------------------------------------------------------------------
 # Muon optimizer
@@ -465,7 +471,8 @@ if __name__ == "__main__":
         print0(f'Dataset contains {total_tokens:,} tokens, will train for {args.num_iterations} steps')
     else:
         train_loader = DistributedDataLoader(args.train_bin)
-
+        
+    
     val_loader = DistributedDataLoader(args.val_bin)
     print0(f'Training dataloader files: {train_loader.files}')
     print0(f'Validation dataloader files: {val_loader.files}')
