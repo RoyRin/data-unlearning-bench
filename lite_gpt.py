@@ -264,7 +264,7 @@ class GPT(nn.Module):
         # Add learnable skip connection weights for decoder layers
         self.skip_weights = nn.Parameter(torch.ones(self.num_decoder_layers))
 
-    def forward(self, inputs, targets, sliding_window_num_blocks):
+    def forward(self, inputs, targets, sliding_window_num_blocks, skip_loss=False):
         BLOCK_SIZE = 128
         seq_len = len(inputs)
         assert seq_len % BLOCK_SIZE == 0
@@ -331,8 +331,12 @@ class GPT(nn.Module):
         logits = self.lm_head(x)
         logits = 15 * torch.tanh(logits / 15) # @Grad62304977 added tanh softcapping, @KoszarskyB reduced it from 30 to 15
         logits = logits.float()
-        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets)
-        return loss
+        
+        if skip_loss:
+            return logits
+        else:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets)
+            return loss
 
 # -----------------------------------------------------------------------------
 # Our own simple Distributed Data Loader

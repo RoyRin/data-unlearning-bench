@@ -1,0 +1,19 @@
+{
+  "batch_indices": [
+    25,
+    242,
+    387,
+    532,
+    540,
+    627,
+    629,
+    634,
+    1060,
+    1173,
+    1207,
+    1241,
+    1253
+  ],
+  "count": 13,
+  "description": "Selected batch indices for forget set (13 batches)"
+}

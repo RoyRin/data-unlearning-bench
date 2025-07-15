@@ -19,9 +19,6 @@ def to_np_cpu(x):
         return x
     else:
         raise TypeError(f"Type for {x} should be torch or numpy ndarray")
-        import pdb
-
-        pdb.set_trace()
 
 
 def get_margins_from_multimodel_logits(
