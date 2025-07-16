@@ -21,10 +21,10 @@ CODE_DIR=/n/home04/rrinberg/code/data-unlearning-bench
 pushd $CODE_DIR
 
 # Set up paths
-MARGINS_FOLDER=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/
+MARGINS_FOLDER=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/oracle_loss_5pct/
 
 # Model checkpoint path - adjust this based on actual checkpoint location
-MODEL_PATH="logs/pretrain_models_pretrain_fineweb_subset_${SLURM_ARRAY_TASK_ID}/state_step001390.pt"
+MODEL_PATH="nano_gpt_models/oracle_loss_5pct/oracle_loss_5pct_${SLURM_ARRAY_TASK_ID}.pt"
 
 echo "Starting margin computation for task ${SLURM_ARRAY_TASK_ID}"
 

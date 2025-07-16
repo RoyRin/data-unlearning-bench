@@ -5,6 +5,8 @@ from scipy import stats
 import argparse
 import sys
 import json
+import os
+import glob
 from pathlib import Path
 
 
@@ -77,7 +79,7 @@ def kl_from_margins(
 ):
     assert (all_oracle_margins.shape == all_unlearned_margins.shape
             ), "Margin tensors must have the same shape"
-    print("Computing results...")
+    print("Computing KL divergence scores...")
     results_list = []
     N = all_oracle_margins.shape[1]
     for sample in tqdm(range(N), desc="KL div"):
@@ -90,6 +92,121 @@ def kl_from_margins(
         results_list.append(KL_div)
     results = np.stack(results_list)
     return results
+
+
+def discover_margin_files(directory_path, data_split=None):
+    """Discover margin files in a directory, optionally filtered by data split"""
+    directory = Path(directory_path)
+    if not directory.exists():
+        raise FileNotFoundError(f"Directory not found: {directory}")
+    
+    if not directory.is_dir():
+        raise ValueError(f"Path is not a directory: {directory}")
+    
+    # Find all files in the directory (assuming all files are margin files)
+    all_files = []
+    for file_path in directory.iterdir():
+        if file_path.is_file():
+            all_files.append(file_path)
+    
+    # Filter files based on data split if specified
+    if data_split is not None:
+        if data_split == "train":
+            margin_files = [f for f in all_files if "_train_" in f.name]
+            print(f"Filtering for training data files (containing '_train_')")
+        elif data_split == "val":
+            margin_files = [f for f in all_files if "_val_" in f.name]
+            print(f"Filtering for validation data files (containing '_val_')")
+        else:
+            raise ValueError(f"Invalid data_split: {data_split}. Must be 'train' or 'val'")
+    else:
+        margin_files = all_files
+        print(f"Using all margin files (no data split filter)")
+    
+    # Sort files for consistent ordering
+    margin_files.sort()
+    
+    print(f"Discovered {len(margin_files)} margin files in {directory}")
+    if len(all_files) != len(margin_files):
+        print(f"  (filtered from {len(all_files)} total files)")
+    for i, file_path in enumerate(margin_files):
+        print(f"  {i+1:2d}. {file_path.name}")
+    
+    return margin_files
+
+
+def validate_margin_dimensions(unlearned_files, oracle_files, subset_indices=None):
+    """Validate that all margin files have compatible dimensions"""
+    print("=" * 80)
+    print("VALIDATING MARGIN DIMENSIONS")
+    print("=" * 80)
+    
+    if len(unlearned_files) != len(oracle_files):
+        raise ValueError(f"Number of unlearned files ({len(unlearned_files)}) != number of oracle files ({len(oracle_files)})")
+    
+    print(f"Checking dimensions for {len(unlearned_files)} margin file pairs...")
+    
+    # Check first file to get expected dimensions
+    print(f"\nChecking first file pair for reference dimensions...")
+    unlearned_data = torch.load(unlearned_files[0], map_location='cpu')
+    oracle_data = torch.load(oracle_files[0], map_location='cpu')
+    
+    unlearned_margins = unlearned_data['margins']
+    oracle_margins = oracle_data['margins']
+    
+    # Apply subset extraction if needed for dimension checking
+    if subset_indices is not None:
+        print(f"Applying subset extraction for dimension validation...")
+        unlearned_margins = extract_margin_subset(unlearned_margins, subset_indices)
+        oracle_margins = extract_margin_subset(oracle_margins, subset_indices)
+    
+    expected_shape = unlearned_margins.shape
+    print(f"  Unlearned file: {unlearned_files[0].name} -> {unlearned_margins.shape}")
+    print(f"  Oracle file: {oracle_files[0].name} -> {oracle_margins.shape}")
+    
+    if unlearned_margins.shape != oracle_margins.shape:
+        raise ValueError(f"Shape mismatch in first file pair: unlearned {unlearned_margins.shape} vs oracle {oracle_margins.shape}")
+    
+    print(f"✓ Reference dimensions: {expected_shape}")
+    print(f"  Total margin values per file: {expected_shape[0]:,}")
+    
+    # Check all remaining files
+    print(f"\nValidating dimensions for remaining {len(unlearned_files)-1} file pairs...")
+    
+    for i, (unlearned_file, oracle_file) in enumerate(zip(unlearned_files[1:], oracle_files[1:]), 1):
+        try:
+            unlearned_data = torch.load(unlearned_file, map_location='cpu')
+            oracle_data = torch.load(oracle_file, map_location='cpu')
+            
+            unlearned_margins = unlearned_data['margins']
+            oracle_margins = oracle_data['margins']
+            
+            # Apply subset extraction if needed
+            if subset_indices is not None:
+                unlearned_margins = extract_margin_subset(unlearned_margins, subset_indices)
+                oracle_margins = extract_margin_subset(oracle_margins, subset_indices)
+            
+            if unlearned_margins.shape != expected_shape:
+                raise ValueError(f"Unlearned file {unlearned_file.name} has shape {unlearned_margins.shape}, expected {expected_shape}")
+            
+            if oracle_margins.shape != expected_shape:
+                raise ValueError(f"Oracle file {oracle_file.name} has shape {oracle_margins.shape}, expected {expected_shape}")
+            
+            if unlearned_margins.shape != oracle_margins.shape:
+                raise ValueError(f"Shape mismatch in file pair {i+1}: unlearned {unlearned_margins.shape} vs oracle {oracle_margins.shape}")
+            
+            # Print progress every 10 files or for small numbers of files
+            if i % 10 == 0 or len(unlearned_files) <= 10:
+                print(f"  ✓ File pair {i+1:2d}/{len(unlearned_files)}: {unlearned_file.name} & {oracle_file.name}")
+                
+        except Exception as e:
+            print(f"  ✗ Error validating file pair {i+1}: {unlearned_file.name} & {oracle_file.name}")
+            raise e
+    
+    print(f"\n✓ All {len(unlearned_files)} file pairs have compatible dimensions: {expected_shape}")
+    print("=" * 80)
+    
+    return expected_shape
 
 
 def load_margins_from_paths(margin_paths, subset_indices=None):
@@ -196,16 +313,20 @@ def save_kl_results(results, output_path, unlearned_paths, oracle_paths, stats, 
 
 def main():
     parser = argparse.ArgumentParser(description="Compute KL divergence scores from margin files")
-    parser.add_argument("--unlearned-margins", nargs='+', required=True,
-                       help="Paths to unlearned margin files")
-    parser.add_argument("--oracle-margins", nargs='+', required=True,
-                       help="Paths to oracle margin files")
+    parser.add_argument("--unlearned-dir", required=True,
+                       help="Path to directory containing unlearned margin files")
+    parser.add_argument("--oracle-dir", required=True,
+                       help="Path to directory containing oracle margin files")
     parser.add_argument("--output", required=True,
                        help="Path to save KL divergence results")
     parser.add_argument("--clip-min", type=float, default=-100,
                        help="Minimum value for clipping margins")
     parser.add_argument("--clip-max", type=float, default=100,
                        help="Maximum value for clipping margins")
+    
+    # Data split filtering
+    parser.add_argument("--data-split", type=str, choices=["train", "val"],
+                       help="Filter margin files by data split: 'train' for training data, 'val' for validation data")
     
     # Margin subset extraction arguments  
     parser.add_argument("--subset-indices", type=str,
@@ -214,6 +335,50 @@ def main():
                        help="Extract margin subset based on batch indices for evaluation")
     
     args = parser.parse_args()
+    
+    print("=" * 80)
+    print("KL DIVERGENCE COMPUTATION FROM MARGIN DIRECTORIES")
+    print("=" * 80)
+    
+    # Validate directory paths
+    unlearned_dir = Path(args.unlearned_dir)
+    oracle_dir = Path(args.oracle_dir)
+    output_path = Path(args.output)
+    
+    if not unlearned_dir.exists():
+        print(f"Error: Unlearned margins directory does not exist: {unlearned_dir}")
+        sys.exit(1)
+    
+    if not oracle_dir.exists():
+        print(f"Error: Oracle margins directory does not exist: {oracle_dir}")
+        sys.exit(1)
+    
+    # Create output directory if needed
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Discover margin files in both directories
+    print(f"\nDiscovering margin files...")
+    if args.data_split:
+        print(f"Data split filter: {args.data_split}")
+    print(f"Unlearned margins directory: {unlearned_dir}")
+    unlearned_files = discover_margin_files(unlearned_dir, args.data_split)
+    
+    print(f"\nOracle margins directory: {oracle_dir}")
+    oracle_files = discover_margin_files(oracle_dir, args.data_split)
+    
+    if len(unlearned_files) == 0:
+        print(f"Error: No margin files found in unlearned directory: {unlearned_dir}")
+        sys.exit(1)
+    
+    if len(oracle_files) == 0:
+        print(f"Error: No margin files found in oracle directory: {oracle_dir}")
+        sys.exit(1)
+    
+    if len(unlearned_files) != len(oracle_files):
+        print(f"Error: Number of files mismatch - unlearned: {len(unlearned_files)}, oracle: {len(oracle_files)}")
+        sys.exit(1)
+    
+    print(f"\n✓ File discovery completed: {len(unlearned_files)} margin files in each directory")
     
     # Handle subset extraction if requested
     subset_info = None
@@ -249,41 +414,28 @@ def main():
         print("These indices will be used to extract margin subsets for KL divergence computation")
         print("=" * 80)
     
-    # Validate paths
-    unlearned_paths = [Path(p) for p in args.unlearned_margins]
-    oracle_paths = [Path(p) for p in args.oracle_margins]
-    output_path = Path(args.output)
-    
-    for path in unlearned_paths:
-        if not path.exists():
-            print(f"Error: Unlearned margin file does not exist: {path}")
-            sys.exit(1)
-    
-    for path in oracle_paths:
-        if not path.exists():
-            print(f"Error: Oracle margin file does not exist: {path}")
-            sys.exit(1)
-    
-    # Create output directory if needed
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Validate margin dimensions before proceeding
+    expected_shape = validate_margin_dimensions(unlearned_files, oracle_files, subset_indices)
     
     # Load margins
     print("Loading unlearned margins...")
-    all_unlearned_margins = load_margins_from_paths(unlearned_paths, subset_indices)
+    all_unlearned_margins = load_margins_from_paths(unlearned_files, subset_indices)
     
     print("Loading oracle margins...")
-    all_oracle_margins = load_margins_from_paths(oracle_paths, subset_indices)
+    all_oracle_margins = load_margins_from_paths(oracle_files, subset_indices)
     
-    # Verify shapes match
+    # Verify shapes match (should be guaranteed by validation, but double-check)
     if all_unlearned_margins.shape != all_oracle_margins.shape:
         print(f"Error: Shape mismatch between unlearned {all_unlearned_margins.shape} and oracle {all_oracle_margins.shape} margins")
         sys.exit(1)
     
-    print(f"Margin tensor shape: {all_unlearned_margins.shape}")
+    print(f"\n✓ Margin loading completed!")
+    print(f"Final margin tensor shape: {all_unlearned_margins.shape}")
     print(f"Ensemble size: {all_unlearned_margins.shape[0]}")
     print(f"Number of samples: {all_unlearned_margins.shape[1]}")
     
     # Compute KL scores
+    print("=" * 80)
     results = kl_from_margins(
         all_unlearned_margins,
         all_oracle_margins,
@@ -300,22 +452,29 @@ def main():
         'median': float(np.median(results))
     }
     
-    print(f"\nKL divergence statistics:")
+    print(f"\n" + "=" * 80)
+    print(f"KL DIVERGENCE COMPUTATION RESULTS")
+    print(f"=" * 80)
+    print(f"KL divergence statistics:")
     print(f"  Mean: {stats['mean']:.6f}")
     print(f"  Std Dev: {stats['std']:.6f}")
     print(f"  Median: {stats['median']:.6f}")
     print(f"  Min: {stats['min']:.6f}")
     print(f"  Max: {stats['max']:.6f}")
+    print(f"  Total samples: {len(results):,}")
     
     # Save results
-    save_kl_results(results, output_path, unlearned_paths, oracle_paths, stats, subset_info)
+    save_kl_results(results, output_path, unlearned_files, oracle_files, stats, subset_info)
     
-    print(f"\nKL divergence computation completed!")
-    print(f"Processed {len(unlearned_paths)} unlearned and {len(oracle_paths)} oracle margin files")
+    print(f"\n" + "=" * 80)
+    print(f"KL DIVERGENCE COMPUTATION COMPLETED SUCCESSFULLY!")
+    print(f"=" * 80)
+    print(f"Processed {len(unlearned_files)} unlearned and {len(oracle_files)} oracle margin files")
     if subset_info:
         print(f"Used margin subset from {subset_info['batch_indices_count']} batches ({subset_info['indices_file_path']})")
-        print(f"Final margin tensor shape: {all_unlearned_margins.shape}")
+    print(f"Final margin tensor shape: {all_unlearned_margins.shape}")
     print(f"Results saved to: {output_path}")
+    print(f"=" * 80)
 
 
 if __name__ == "__main__":

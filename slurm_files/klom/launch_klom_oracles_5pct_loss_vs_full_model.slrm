@@ -1,0 +1,47 @@
+#!/bin/sh
+#SBATCH --job-name=klom_5pct_loss
+#SBATCH --partition=kempner_h100
+#SBATCH --gres=gpu:1
+#SBATCH --mem=80G
+#SBATCH -t 0-4:00
+#SBATCH -c 1
+#SBATCH --output=/n/home04/rrinberg/catered_out/klom_bench/klom_5pct_loss-%j.out
+#SBATCH --mail-user=royrinberg@gmail.com  
+#SBATCH --mail-type=ALL
+#SBATCH --account kempner_sham_lab
+
+module load python/3.10.12-fasrc01
+module load intelpython/3.9.16-fasrc01
+module load cuda cudnn
+
+mamba activate ffcv
+
+CODE_DIR=/n/home04/rrinberg/code/data-unlearning-bench
+pushd $CODE_DIR
+
+# Set up paths for KL divergence computation
+UNLEARNED_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/full_models/
+ORACLE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/oracle_loss_5pct/
+OUTPUT_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/klom/oracle_loss_5pct_vs_full_model/
+FORGET_INDICES=data/ngpt-set-indices/5pct-forget-loss-indices.json
+RETAIN_INDICES=data/ngpt-set-indices/5pct-retain-loss-indices.json
+
+echo "Starting KL divergence computation: Oracle Loss 5% vs Full Model"
+echo "Unlearned dir: $UNLEARNED_DIR"
+echo "Oracle dir: $ORACLE_DIR"
+echo "Output dir: $OUTPUT_DIR"
+echo "Forget indices: $FORGET_INDICES"
+echo "Retain indices: $RETAIN_INDICES"
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Run the KL divergence computation
+./launchklom.sh \
+    --unlearned-dir "$UNLEARNED_DIR" \
+    --oracle-dir "$ORACLE_DIR" \
+    --output-dir "$OUTPUT_DIR" \
+    --forget-indices "$FORGET_INDICES" \
+    --retain-indices "$RETAIN_INDICES"
+
+echo "KL divergence computation completed!" 
