@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Usage: ./launchmargins.sh <model_path> [margins_folder] [--val-only] [--train-only] [--val-data <path>] [--train-data <path>]
+# Usage: ./launchmargins.sh <model_path> [margins_folder] [--val-only] [--train-only] [--val-data <path>] [--train-data <path>] [--device <gpu_idx>]
 #   model_path         Path to the model checkpoint (.pt file)
 #   margins_folder     (optional) Directory to save margins files (default: same as model directory)
 #   --val-only         (optional) Only compute margins for validation data
 #   --train-only       (optional) Only compute margins for training data  
 #   --val-data         (optional) Path to validation data file (default: data/fineweb10B/fineweb_val_000000.bin)
 #   --train-data       (optional) Path to training data file (default: data/fineweb10B/fineweb_train_subset.bin)
+#   --device           (optional) GPU device index (default: 0)
 
 set -euo pipefail
 
 # Check if model path is provided
 if [ $# -lt 1 ]; then
     echo "Error: Model path is required"
-    echo "Usage: $0 <model_path> [margins_folder] [--val-only] [--train-only] [--val-data <path>] [--train-data <path>]"
+    echo "Usage: $0 <model_path> [margins_folder] [--val-only] [--train-only] [--val-data <path>] [--train-data <path>] [--device <gpu_idx>]"
     exit 1
 fi
 
@@ -22,6 +23,7 @@ VAL_ONLY=false
 TRAIN_ONLY=false
 VAL_DATA="data/fineweb10B/fineweb_val_000000.bin"
 TRAIN_DATA="data/fineweb10B/fineweb_train_subset.bin"
+DEVICE_IDX=0
 
 # Parse arguments
 i=2
@@ -49,6 +51,15 @@ while [ $i -le $# ]; do
                 TRAIN_DATA="${!i}"
             else
                 echo "Error: --train-data requires a file path"
+                exit 1
+            fi
+            ;;
+        --device)
+            i=$((i + 1))
+            if [ $i -le $# ]; then
+                DEVICE_IDX="${!i}"
+            else
+                echo "Error: --device requires a GPU index"
                 exit 1
             fi
             ;;
@@ -95,6 +106,7 @@ echo "Validation data: $VAL_DATA"
 echo "Training data: $TRAIN_DATA"
 echo "Val only: $VAL_ONLY"
 echo "Train only: $TRAIN_ONLY"
+echo "Device: $DEVICE_IDX"
 echo "============================================"
 
 # Function to run margin computation with error handling
@@ -117,7 +129,11 @@ run_margin_computation() {
     fi
     
     # Run the margin computation
-    python teacher_margins.py "$MODEL_PATH" "$data_path" $MARGINS_ARG
+    if [ "$DEVICE_IDX" != "0" ]; then
+        CUDA_VISIBLE_DEVICES="$DEVICE_IDX" python teacher_margins.py "$MODEL_PATH" "$data_path" $MARGINS_ARG
+    else
+        python teacher_margins.py "$MODEL_PATH" "$data_path" $MARGINS_ARG
+    fi
     
     if [ $? -eq 0 ]; then
         echo "$data_type margins computation completed successfully"
