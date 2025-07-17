@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH --job-name=oracle_random_1pt
-#SBATCH --array=0-99%12
+#SBATCH --array=0-120%6
 #SBATCH --partition=kempner_h100
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G

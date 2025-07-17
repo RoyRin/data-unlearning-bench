@@ -242,11 +242,14 @@ def load_and_inspect_batch_losses(losses_path, split_batch_factor=1):
     
     return batch_losses
 
+from pathlib import Path
+HARD_CODE_checkpoint_folder = Path("/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/pretrain_models/")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Extract batch losses from training checkpoint')
     parser.add_argument('--split_batch_factor', type=int, default=1, 
                         help='Factor by which to split micro batches for memory efficiency (default: 1). Increase if you get CUDA OOM errors.')
-    parser.add_argument('--checkpoint_path', type=str, default='logs/0e7c9660-7014-4267-b5f7-fc4ebf0625cc/state_step001390.pt',
+    parser.add_argument('--checkpoint_path', type=str, default=HARD_CODE_checkpoint_folder / '0e7c9660-7014-4267-b5f7-fc4ebf0625cc/state_step001390.pt',
                         help='Path to the checkpoint file')
     parser.add_argument('--losses_output_path', type=str, default='data/fineweb10B/batch_losses.pt',
                         help='Path to save the extracted batch losses')

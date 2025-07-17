@@ -28,7 +28,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 # use of FlexAttention contributed by @KoszarskyB
 from torch.nn.attention.flex_attention import BlockMask, flex_attention
 
-
+HARD_CODE_checkpoint_folder = Path("/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/pretrain_models/")
 # -----------------------------------------------------------------------------
 # Muon optimizer
 
@@ -405,7 +405,7 @@ if __name__ == "__main__":
         val_tokens = 10485760 # how many tokens of validation data? it's important to keep this fixed for consistent comparisons
         # implementation
         save_checkpoint = False
-        checkpoint_folder = Path("/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/pretrain_models/")  # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
+        checkpoint_folder = HARD_CODE_checkpoint_folder # if specified, save checkpoints to logs/{checkpoint_folder}/ instead of logs/{run_id}/
         if not checkpoint_folder.exists():
             checkpoint_folder = None
         run_description = None  # if specified, include this description in checkpoint folder name
@@ -577,14 +577,14 @@ if __name__ == "__main__":
                 # Build checkpoint directory name with optional run description
                 if args.checkpoint_folder is not None:
                     if args.run_description is not None:
-                        checkpoint_dir = f'logs/{args.checkpoint_folder}_{args.run_description}'
+                        checkpoint_dir = HARD_CODE_checkpoint_folder / f'{args.checkpoint_folder.name}_{args.run_description}'
                     else:
-                        checkpoint_dir = f'logs/{args.checkpoint_folder}'
+                        checkpoint_dir = HARD_CODE_checkpoint_folder / f'{args.checkpoint_folder}'
                 else:
                     if args.run_description is not None:
-                        checkpoint_dir = f'logs/{run_id}_{args.run_description}'
+                        checkpoint_dir =HARD_CODE_checkpoint_folder / f'{run_id}_{args.run_description}'
                     else:
-                        checkpoint_dir = f'logs/{run_id}'
+                        checkpoint_dir = HARD_CODE_checkpoint_folder / f'{run_id}'
                 
                 checkpoint_path = f'{checkpoint_dir}/state_step{step:06d}.pt'
                 os.makedirs(checkpoint_dir, exist_ok=True)
