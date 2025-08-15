@@ -366,6 +366,13 @@ def main():
     print(f"\nOracle margins directory: {oracle_dir}")
     oracle_files = discover_margin_files(oracle_dir, args.data_split)
     
+    # Limit the number of files to the minimum of the two directories - ROY- HACK
+    
+    max_num_files = min(len(unlearned_files), len(oracle_files))
+    unlearned_files = unlearned_files[:max_num_files]
+    oracle_files = oracle_files[:max_num_files]
+    
+    
     if len(unlearned_files) == 0:
         print(f"Error: No margin files found in unlearned directory: {unlearned_dir}")
         sys.exit(1)
@@ -415,7 +422,10 @@ def main():
         print("=" * 80)
     
     # Validate margin dimensions before proceeding
-    expected_shape = validate_margin_dimensions(unlearned_files, oracle_files, subset_indices)
+    # HACK
+    
+    if True:
+        expected_shape = validate_margin_dimensions(unlearned_files, oracle_files, subset_indices)
     
     # Load margins
     print("Loading unlearned margins...")

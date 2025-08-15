@@ -20,9 +20,9 @@ CODE_DIR=/n/home04/rrinberg/code/data-unlearning-bench
 pushd $CODE_DIR
 
 # Set up paths for KL divergence computation
-UNLEARNED_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/full_models/
-ORACLE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/oracle_random_1pct/
-OUTPUT_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/klom/oracle_random_1pct_vs_full_model/
+UNLEARNED_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/nano_gpt_models/margins/full_models/
+ORACLE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/nano_gpt_models/margins/oracle_random_1_pct/
+OUTPUT_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/klom/oracle_random_1_pct_vs_full_model/
 FORGET_INDICES=data/ngpt-set-indices/1pct-forget-random-indices.json
 RETAIN_INDICES=data/ngpt-set-indices/1pct-retain-random-indices.json
 

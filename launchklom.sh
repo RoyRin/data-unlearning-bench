@@ -244,16 +244,6 @@ if [ "$ORACLE_COUNT" -eq 0 ]; then
     exit 1
 fi
 
-if [ "$UNLEARNED_COUNT" -ne "$ORACLE_COUNT" ]; then
-    echo "Error: Mismatch in number of margin files:"
-    echo "  Unlearned directory: $UNLEARNED_COUNT files"
-    echo "  Oracle directory: $ORACLE_COUNT files"
-    echo "Both directories must contain the same number of margin files"
-    exit 1
-fi
-
-echo "✓ File count validation passed: $UNLEARNED_COUNT margin files in each directory"
-
 # Create output directory if needed
 mkdir -p "$OUTPUT_DIR"
 

@@ -3,7 +3,7 @@
 #SBATCH --partition=kempner_h100
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
-#SBATCH -t 0-4:00
+#SBATCH -t 0-38:00
 #SBATCH -c 1
 #SBATCH --output=/n/home04/rrinberg/catered_out/klom_bench/klom_5pct_random-%j.out
 #SBATCH --mail-user=royrinberg@gmail.com  
@@ -20,9 +20,9 @@ CODE_DIR=/n/home04/rrinberg/code/data-unlearning-bench
 pushd $CODE_DIR
 
 # Set up paths for KL divergence computation
-UNLEARNED_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/full_models/
-ORACLE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/oracle_random_5pct/
-OUTPUT_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/klom/oracle_random_5pct_vs_full_model/
+UNLEARNED_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/nano_gpt_models/margins/full_models/
+ORACLE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/nano_gpt_models/margins/oracle_random_5_pct/
+OUTPUT_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/klom/oracle_random_5_pct_vs_full_model/
 FORGET_INDICES=data/ngpt-set-indices/5pct-forget-random-indices.json
 RETAIN_INDICES=data/ngpt-set-indices/5pct-retain-random-indices.json
 

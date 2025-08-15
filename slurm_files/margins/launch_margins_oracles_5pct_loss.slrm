@@ -1,6 +1,6 @@
 #!/bin/sh
 #SBATCH --job-name=margins_compute
-#SBATCH --array=0-99%12
+#SBATCH --array=0-120%6
 #SBATCH --partition=kempner_h100
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
@@ -21,10 +21,13 @@ CODE_DIR=/n/home04/rrinberg/code/data-unlearning-bench
 pushd $CODE_DIR
 
 # Set up paths
-MARGINS_FOLDER=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/margins/oracle_loss_5pct/
+BASE_DIR=/n/home04/rrinberg/data_dir/KLOM_bench/nano_gpt_models/nano_gpt_models
+# Set up paths
+MARGINS_FOLDER=$BASE_DIR/margins/oracle_loss_5_pct/
+mkdir -p $MARGINS_FOLDER
 
 # Model checkpoint path - adjust this based on actual checkpoint location
-MODEL_PATH="nano_gpt_models/oracle_loss_5pct/oracle_loss_5pct_${SLURM_ARRAY_TASK_ID}.pt"
+MODEL_PATH=$BASE_DIR/oracle_loss_5_pct/oracle_loss_5pct_${SLURM_ARRAY_TASK_ID}.pt
 
 echo "Starting margin computation for task ${SLURM_ARRAY_TASK_ID}"
 
