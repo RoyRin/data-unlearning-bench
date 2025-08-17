@@ -1,8 +1,8 @@
 #!/bin/sh
-#SBATCH --job-name=klom_1pct_loss
+#SBATCH --job-name=1pct_loss_klom
 #SBATCH --partition=kempner_h100
 #SBATCH --gres=gpu:1
-#SBATCH --mem=80G
+#SBATCH --mem=500G
 #SBATCH -t 0-8:00
 #SBATCH -c 1
 #SBATCH --output=/n/home04/rrinberg/catered_out/klom_bench/klom_1pct_loss-%j.out
