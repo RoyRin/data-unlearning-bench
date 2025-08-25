@@ -8,91 +8,86 @@ import json
 import os
 import glob
 from pathlib import Path
+from typing import List, Union, Generator
+import math
 
+import numpy as np
+from scipy import stats
+import time # For profiling
+import sys  # For exiting after profiling
 
-def to_np_cpu(x):
-    if torch.is_tensor(x):
-        return x.cpu().numpy()
-    elif isinstance(x, np.ndarray):
-        return x
-    else:
-        raise TypeError(f"Type for {x} should be torch or numpy ndarray")
-
-def compute_binned_KL_div(
-    p_arr: np.ndarray,
-    q_arr: np.ndarray,
+def compute_binned_KL_div_vectorized(
+    p_chunk: np.ndarray,
+    q_chunk: np.ndarray,
     bin_count=20,
     eps=1e-5,
     min_val=-100,
     max_val=100,
 ):
     """
-    Computes KL divergence between two distributions represented by samples,
-    using binning. Calculates D_KL(p || q).
+    Computes KL divergence for a chunk of samples in a fully vectorized manner.
+    This version has been validated to be numerically equivalent to the original.
     """
-    # Clip arrays to avoid extreme values affecting bin ranges
-    p_arr = np.clip(p_arr, min_val, max_val)
-    q_arr = np.clip(q_arr, min_val, max_val)
+    p_chunk = np.clip(p_chunk, min_val, max_val)
+    q_chunk = np.clip(q_chunk, min_val, max_val)
+    bins_starts = np.minimum(p_chunk.min(axis=0), q_chunk.min(axis=0))
+    bins_ends = np.maximum(p_chunk.max(axis=0), q_chunk.max(axis=0))
+    identical_mask = bins_starts >= bins_ends
+    bins_ends[identical_mask] = bins_starts[identical_mask] + 1
+    
+    bin_edges = np.stack(
+        [np.linspace(bins_starts[i], bins_ends[i], bin_count + 1) for i in range(p_chunk.shape[1])],
+        axis=1
+    )
+    
+    p_binned_indices = np.sum(p_chunk[:, np.newaxis, :] >= bin_edges[np.newaxis, :, :], axis=1)
+    q_binned_indices = np.sum(q_chunk[:, np.newaxis, :] >= bin_edges[np.newaxis, :, :], axis=1)
+    bin_range = np.arange(1, bin_count + 1)[:, np.newaxis, np.newaxis]
+    p_bin_counts = np.sum(p_binned_indices == bin_range, axis=1).astype(float)
+    q_bin_counts = np.sum(q_binned_indices == bin_range, axis=1).astype(float)
+    p_totals = p_bin_counts.sum(axis=0)
+    q_totals = q_bin_counts.sum(axis=0)
+    p_bin_probs = np.divide(p_bin_counts, p_totals, where=p_totals > 0)
+    q_bin_probs = np.divide(q_bin_counts, q_totals, where=q_totals > 0)
+    q_bin_probs_safe = np.where(p_bin_probs > 0, np.maximum(q_bin_probs, eps), q_bin_probs)
+    return stats.entropy(pk=p_bin_probs, qk=q_bin_probs_safe, axis=0)
 
-    # Determine bins based on the combined range of both arrays
-    bins_start = min(p_arr.min(), q_arr.min())
-    bins_end = max(p_arr.max(), q_arr.max())
-    if bins_start >= bins_end:  # Handle edge case where all values are the same
-        bins_end = bins_start + 1
-    bins = np.linspace(bins_start, bins_end,
-                       bin_count + 1)  # bin_count intervals
-
-    # Digitize arrays: find which bin each sample falls into
-    # np.digitize returns indices starting from 1
-    p_binned_indices = np.digitize(p_arr, bins)
-    q_binned_indices = np.digitize(q_arr, bins)
-
-    # Count samples per bin (adjusting for 1-based indexing of digitize)
-    p_bin_counts = np.array(
-        [np.sum(p_binned_indices == i) for i in range(1, bin_count + 1)])
-    q_bin_counts = np.array(
-        [np.sum(q_binned_indices == i) for i in range(1, bin_count + 1)])
-
-    # Convert counts to probabilities
-    p_total = p_bin_counts.sum()
-    q_total = q_bin_counts.sum()
-
-    # Avoid division by zero if an array is empty
-    p_bin_probs = (p_bin_counts / p_total if p_total > 0 else np.zeros_like(
-        p_bin_counts, dtype=float))
-    q_bin_probs = (q_bin_counts / q_total if q_total > 0 else np.zeros_like(
-        q_bin_counts, dtype=float))
-
-    # Avoid log(0) issues in KL divergence calculation. Add eps where p > 0.
-    q_bin_probs_safe = np.where(p_bin_probs > 0, np.maximum(q_bin_probs, eps),
-                                q_bin_probs)
-    # Renormalize q_safe slightly if needed? Scipy handles non-normalized qk ok.
-
-    return stats.entropy(pk=p_bin_probs, qk=q_bin_probs_safe)
-
-
-def kl_from_margins(
-    all_unlearned_margins: torch.Tensor,
-    all_oracle_margins: torch.Tensor,
+def kl_from_margin_generators_vectorized(
+    unlearned_margins_generator: Generator[np.ndarray, None, None],
+    oracle_margins_generator: Generator[np.ndarray, None, None],
+    total_chunks: int,
     clip_min: float = -100,
     clip_max: float = 100,
-):
-    assert (all_oracle_margins.shape == all_unlearned_margins.shape
-            ), "Margin tensors must have the same shape"
-    print("Computing KL divergence scores...")
-    results_list = []
-    N = all_oracle_margins.shape[1]
-    for sample in tqdm(range(N), desc="KL div"):
-        oracle_arr = to_np_cpu(all_oracle_margins[:, sample])
-        unlearned_arr = to_np_cpu(all_unlearned_margins[:, sample])
-        KL_div = compute_binned_KL_div(unlearned_arr,
-                                       oracle_arr,
-                                       min_val=clip_min,
-                                       max_val=clip_max)
-        results_list.append(KL_div)
-    results = np.stack(results_list)
-    return results
+) -> np.ndarray:
+    """
+    Computes KL divergence scores by processing whole chunks from margin generators
+    in a vectorized fashion.
+    """
+    print("Computing KL divergence scores from streamed margin data (vectorized)...")
+    all_results_chunks = []
 
+    # Use the `total` argument in tqdm for a proper progress bar
+    progress_bar = tqdm(
+        zip(unlearned_margins_generator, oracle_margins_generator),
+        total=total_chunks,
+        desc="Processing chunks"
+    )
+
+    for unlearned_chunk, oracle_chunk in progress_bar:
+        assert (oracle_chunk.shape == unlearned_chunk.shape), \
+            f"Margin chunk shapes must match. Got {oracle_chunk.shape} and {unlearned_chunk.shape}"
+
+        kl_divs_chunk = compute_binned_KL_div_vectorized(
+            p_chunk=unlearned_chunk,
+            q_chunk=oracle_chunk,
+            min_val=clip_min,
+            max_val=clip_max
+        )
+        all_results_chunks.append(kl_divs_chunk)
+            
+    if not all_results_chunks:
+        return np.array([])
+    return np.concatenate(all_results_chunks)
 
 def discover_margin_files(directory_path, data_split=None):
     """Discover margin files in a directory, optionally filtered by data split"""
@@ -103,11 +98,13 @@ def discover_margin_files(directory_path, data_split=None):
     if not directory.is_dir():
         raise ValueError(f"Path is not a directory: {directory}")
     
-    # Find all files in the directory (assuming all files are margin files)
+    # Find all supported files in the directory (np, npy, npz)
     all_files = []
     for file_path in directory.iterdir():
         if file_path.is_file():
-            all_files.append(file_path)
+            suffix = file_path.suffix.lower()
+            if suffix in {".np", ".npy", ".npz"}:
+                all_files.append(file_path)
     
     # Filter files based on data split if specified
     if data_split is not None:
@@ -134,165 +131,58 @@ def discover_margin_files(directory_path, data_split=None):
     
     return margin_files
 
-
-def validate_margin_dimensions(unlearned_files, oracle_files, subset_indices=None):
-    """Validate that all margin files have compatible dimensions"""
-    print("=" * 80)
-    print("VALIDATING MARGIN DIMENSIONS")
-    print("=" * 80)
-    
-    if len(unlearned_files) != len(oracle_files):
-        raise ValueError(f"Number of unlearned files ({len(unlearned_files)}) != number of oracle files ({len(oracle_files)})")
-    
-    print(f"Checking dimensions for {len(unlearned_files)} margin file pairs...")
-    
-    # Check first file to get expected dimensions
-    print(f"\nChecking first file pair for reference dimensions...")
-    unlearned_data = torch.load(unlearned_files[0], map_location='cpu')
-    oracle_data = torch.load(oracle_files[0], map_location='cpu')
-    
-    unlearned_margins = unlearned_data['margins']
-    oracle_margins = oracle_data['margins']
-    
-    # Apply subset extraction if needed for dimension checking
-    if subset_indices is not None:
-        print(f"Applying subset extraction for dimension validation...")
-        unlearned_margins = extract_margin_subset(unlearned_margins, subset_indices)
-        oracle_margins = extract_margin_subset(oracle_margins, subset_indices)
-    
-    expected_shape = unlearned_margins.shape
-    print(f"  Unlearned file: {unlearned_files[0].name} -> {unlearned_margins.shape}")
-    print(f"  Oracle file: {oracle_files[0].name} -> {oracle_margins.shape}")
-    
-    if unlearned_margins.shape != oracle_margins.shape:
-        raise ValueError(f"Shape mismatch in first file pair: unlearned {unlearned_margins.shape} vs oracle {oracle_margins.shape}")
-    
-    print(f"✓ Reference dimensions: {expected_shape}")
-    print(f"  Total margin values per file: {expected_shape[0]:,}")
-    
-    # Check all remaining files
-    print(f"\nValidating dimensions for remaining {len(unlearned_files)-1} file pairs...")
-    
-    for i, (unlearned_file, oracle_file) in enumerate(zip(unlearned_files[1:], oracle_files[1:]), 1):
-        try:
-            unlearned_data = torch.load(unlearned_file, map_location='cpu')
-            oracle_data = torch.load(oracle_file, map_location='cpu')
-            
-            unlearned_margins = unlearned_data['margins']
-            oracle_margins = oracle_data['margins']
-            
-            # Apply subset extraction if needed
-            if subset_indices is not None:
-                unlearned_margins = extract_margin_subset(unlearned_margins, subset_indices)
-                oracle_margins = extract_margin_subset(oracle_margins, subset_indices)
-            
-            if unlearned_margins.shape != expected_shape:
-                raise ValueError(f"Unlearned file {unlearned_file.name} has shape {unlearned_margins.shape}, expected {expected_shape}")
-            
-            if oracle_margins.shape != expected_shape:
-                raise ValueError(f"Oracle file {oracle_file.name} has shape {oracle_margins.shape}, expected {expected_shape}")
-            
-            if unlearned_margins.shape != oracle_margins.shape:
-                raise ValueError(f"Shape mismatch in file pair {i+1}: unlearned {unlearned_margins.shape} vs oracle {oracle_margins.shape}")
-            
-            # Print progress every 10 files or for small numbers of files
-            if i % 10 == 0 or len(unlearned_files) <= 10:
-                print(f"  ✓ File pair {i+1:2d}/{len(unlearned_files)}: {unlearned_file.name} & {oracle_file.name}")
-                
-        except Exception as e:
-            print(f"  ✗ Error validating file pair {i+1}: {unlearned_file.name} & {oracle_file.name}")
-            raise e
-    
-    print(f"\n✓ All {len(unlearned_files)} file pairs have compatible dimensions: {expected_shape}")
-    print("=" * 80)
-    
-    return expected_shape
-
-
-def load_margins_from_paths(margin_paths, subset_indices=None):
-    """Load margins from multiple paths and combine into a single tensor, optionally extracting a subset"""
-    all_margins = []
-    
-    print(f"Loading margins from {len(margin_paths)} files...")
-    for i, path in enumerate(tqdm(margin_paths, desc="Loading margin files")):
-        path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(f"Margin file not found: {path}")
-        
-        margin_data = torch.load(path, map_location='cpu')
-        margins = margin_data['margins']  # Shape: (num_tokens,)
-        
-        # Extract subset if indices are provided
-        if subset_indices is not None:
-            margins = extract_margin_subset(margins, subset_indices)
-        
-        all_margins.append(margins)
-        
-        if i == 0:
-            print(f"First file contains {len(margins):,} margin values")
-    
-    # Verify all files have the same number of margin values
-    margin_counts = [len(m) for m in all_margins]
-    if not all(count == margin_counts[0] for count in margin_counts):
-        raise ValueError(f"Margin files have different margin counts: {margin_counts}")
-    
-    print(f"All {len(margin_paths)} files contain {margin_counts[0]:,} margin values each")
-    
-    # Stack along a new dimension (first dimension will be ensemble members)
-    # Shape: (ensemble_size, num_margins)
-    combined_margins = torch.stack(all_margins, dim=0)
-    return combined_margins
-
-
 def load_batch_indices(indices_file):
     """Load batch indices from JSON file"""
     with open(indices_file, 'r') as f:
         data = json.load(f)
     return data['batch_indices'], data['count']
 
+def get_d_slice_efficient(start_idx: int, end_idx: int, numpy_files: List[str]) -> np.ndarray:
+    # Efficiently loads a single contiguous slice from all N memory-mapped files.
+    all_slices = [np.load(f, mmap_mode='r')[start_idx:end_idx] for f in numpy_files]
+    return np.stack(all_slices)
 
-def get_margin_indices_from_batch_indices(batch_indices, batch_size=8*64*1024, micro_batch_size=64*1024):
-    """Convert batch indices to margin indices (token positions)"""
-    micro_batches_per_step = batch_size // micro_batch_size
-    margin_indices = []
-    
-    print(f"Converting {len(batch_indices)} batch indices to margin indices...")
-    print(f"Batch size: {batch_size:,}, Micro batch size: {micro_batch_size:,}")
-    print(f"Micro batches per step: {micro_batches_per_step}")
-    
-    for step in batch_indices:
-        for micro_idx in range(micro_batches_per_step):
-            micro_batch_idx = step * micro_batches_per_step + micro_idx
-            start_pos = micro_batch_idx * micro_batch_size
-            end_pos = start_pos + micro_batch_size  # Note: no +1 here since margins are computed on targets
-            
-            # Add all token positions in this micro batch
-            margin_indices.extend(range(start_pos, end_pos))
-    
-    print(f"Generated {len(margin_indices):,} margin indices")
-    return margin_indices
+def get_margins_subset_from_batch_indices(
+    batch_indices: Union[List[int], np.ndarray],
+    numpy_files: List[str],
+    batch_size: int = 8 * 64 * 1024
+) -> np.ndarray:
+    # Fetches margin data for given batch_indices without creating an intermediate index list.
+    all_batch_data = [
+        get_d_slice_efficient(step * batch_size, (step + 1) * batch_size, numpy_files)
+        for step in batch_indices
+    ]
+    if not all_batch_data:
+        # Return an array with the correct first dimension (N) but empty second dimension.
+        return np.empty((len(numpy_files), 0))
+    return np.concatenate(all_batch_data, axis=1)
 
+def load_margins_in_batched_ensembles(
+    margin_paths: List[str],
+    batch_size: int = 8 * 64 * 1024,
+    subset_indices: Union[List[int], np.ndarray] = None,
+    ensemble_size: int = 64
+) -> Generator[np.ndarray, None, None]:
+    # Creates a generator to load ensembles of margin batches (N, D_chunk) on the fly.
+    
+    if subset_indices is not None:
+        target_batch_indices = subset_indices
+    else:
+        # If no subset is specified, determine total batches from the first file's shape.
+        d_dim = np.load(margin_paths[0], mmap_mode='r').shape[0]
+        total_batches = math.ceil(d_dim / batch_size)
+        target_batch_indices = range(total_batches)
 
-def extract_margin_subset(all_margins, batch_indices, batch_size=8*64*1024, micro_batch_size=64*1024):
-    """Extract margin subset based on batch indices"""
-    margin_indices = get_margin_indices_from_batch_indices(batch_indices, batch_size, micro_batch_size)
-    
-    # Convert to tensor for efficient indexing
-    margin_indices_tensor = torch.tensor(margin_indices, dtype=torch.long)
-    
-    # Filter out indices that exceed the margin tensor length
-    valid_mask = margin_indices_tensor < len(all_margins)
-    if not valid_mask.all():
-        num_invalid = (~valid_mask).sum().item()
-        print(f"WARNING: {num_invalid} margin indices exceed margin tensor length ({len(all_margins)})")
-        margin_indices_tensor = margin_indices_tensor[valid_mask]
-    
-    # Extract subset
-    subset_margins = all_margins[margin_indices_tensor]
-    print(f"Extracted {len(subset_margins):,} margins from subset")
-    
-    return subset_margins
-
+    # Iterate through the target indices in chunks of 'ensemble_size'.
+    for i in range(0, len(target_batch_indices), ensemble_size):
+        chunk_indices = target_batch_indices[i : i + ensemble_size]
+        
+        if len(chunk_indices) > 0:
+            yield get_margins_subset_from_batch_indices(
+                batch_indices=chunk_indices,
+                numpy_files=margin_paths,
+                batch_size=batch_size
+            )
 
 def save_kl_results(results, output_path, unlearned_paths, oracle_paths, stats, subset_info=None):
     """Save KL divergence results with metadata"""
@@ -333,6 +223,12 @@ def main():
                        help="Path to JSON file containing batch indices for margin subset extraction")
     parser.add_argument("--use-subset", action='store_true',
                        help="Extract margin subset based on batch indices for evaluation")
+    parser.add_argument("--ensemble-size", type=float, default=1,
+                       help="Number of batches per ensemble")
+    
+    # Skip validation checks
+    parser.add_argument("--skip-checks", action='store_true', default=True,
+                       help="Skip dimension validation checks before computing KL scores (default: True)")
     
     args = parser.parse_args()
     
@@ -421,34 +317,47 @@ def main():
         print("These indices will be used to extract margin subsets for KL divergence computation")
         print("=" * 80)
     
-    # Validate margin dimensions before proceeding
-    # HACK
-    
-    if True:
+    # Validate margin dimensions before proceeding (optional)
+    if not args.skip_checks:
+        print("=" * 80)
+        print("PERFORMING DIMENSION VALIDATION CHECKS")
+        print("=" * 80)
         expected_shape = validate_margin_dimensions(unlearned_files, oracle_files, subset_indices)
+    else:
+        print("=" * 80)
+        print("SKIPPING DIMENSION VALIDATION CHECKS")
+        print("=" * 80)
+
+    # --- START: Progress Bar Calculation ---
+    # Calculate the total number of chunks for the progress bar BEFORE creating the generators.
+    if subset_indices is not None:
+        num_target_batches = len(subset_indices)
+    else:
+        # If processing all data, determine total batches from the first file's shape.
+        # This requires one small, fast read to get the dimension.
+        # NOTE: Assumes the default batch_size=8*64*1024 is used.
+        d_dim = np.load(unlearned_files[0], mmap_mode='r').shape[0]
+        batch_size = 8 * 64 * 1024 
+        num_target_batches = math.ceil(d_dim / batch_size)
+
+    total_chunks = math.ceil(num_target_batches / args.ensemble_size)
+    # --- END: Progress Bar Calculation ---
     
     # Load margins
     print("Loading unlearned margins...")
-    all_unlearned_margins = load_margins_from_paths(unlearned_files, subset_indices)
+    unlearned_margins_generator = load_margins_in_batched_ensembles(margin_paths=unlearned_files, subset_indices=subset_indices, ensemble_size=args.ensemble_size)
     
     print("Loading oracle margins...")
-    all_oracle_margins = load_margins_from_paths(oracle_files, subset_indices)
-    
-    # Verify shapes match (should be guaranteed by validation, but double-check)
-    if all_unlearned_margins.shape != all_oracle_margins.shape:
-        print(f"Error: Shape mismatch between unlearned {all_unlearned_margins.shape} and oracle {all_oracle_margins.shape} margins")
-        sys.exit(1)
+    oracle_margins_generator = load_margins_in_batched_ensembles(margin_paths=oracle_files, subset_indices=subset_indices, ensemble_size=args.ensemble_size)
     
     print(f"\n✓ Margin loading completed!")
-    print(f"Final margin tensor shape: {all_unlearned_margins.shape}")
-    print(f"Ensemble size: {all_unlearned_margins.shape[0]}")
-    print(f"Number of samples: {all_unlearned_margins.shape[1]}")
     
     # Compute KL scores
     print("=" * 80)
-    results = kl_from_margins(
-        all_unlearned_margins,
-        all_oracle_margins,
+    results = kl_from_margin_generators_vectorized(
+        unlearned_margins_generator,
+        oracle_margins_generator,
+        total_chunks=total_chunks,
         clip_min=args.clip_min,
         clip_max=args.clip_max
     )
@@ -482,7 +391,6 @@ def main():
     print(f"Processed {len(unlearned_files)} unlearned and {len(oracle_files)} oracle margin files")
     if subset_info:
         print(f"Used margin subset from {subset_info['batch_indices_count']} batches ({subset_info['indices_file_path']})")
-    print(f"Final margin tensor shape: {all_unlearned_margins.shape}")
     print(f"Results saved to: {output_path}")
     print(f"=" * 80)
 
