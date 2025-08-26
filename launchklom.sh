@@ -24,6 +24,7 @@ TRAIN_DATA="data/fineweb10B/fineweb_train_subset.bin"
 VAL_DATA="data/fineweb10B/fineweb_val_000000.bin"
 CLIP_MIN=-100
 CLIP_MAX=100
+LEGACY_MODE=false
 
 # Function to show usage
 show_usage() {
@@ -42,6 +43,7 @@ Optional arguments:
   --val-data <path>         Path to validation data file (default: data/fineweb10B/fineweb_val_000000.bin)
   --clip-min <value>        Minimum value for clipping margins (default: -100)
   --clip-max <value>        Maximum value for clipping margins (default: 100)
+  --legacy                  Use the legacy teacher_klom.py script (old_teacher_klom.py)
   --help                    Show this help message
 
 Examples:
@@ -154,6 +156,10 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: --clip-max requires a numeric value"
                 exit 1
             fi
+            ;;
+        --legacy)
+            LEGACY_MODE=true
+            shift
             ;;
         --help|-h)
             show_usage
@@ -298,11 +304,15 @@ run_teacher_klom() {
         CMD_ARGS+=("$subset_indices")
     fi
     
-    echo "Command: python teacher_klom.py ${CMD_ARGS[*]}"
+        local script_to_run="teacher_klom.py"
+    if [ "$LEGACY_MODE" = true ]; then
+        script_to_run="old_teacher_klom.py"
+    fi
+    echo "Command: python $script_to_run ${CMD_ARGS[*]}"
     echo "============================================"
     
     # Execute the command
-    python teacher_klom.py "${CMD_ARGS[@]}"
+    python "$script_to_run" "${CMD_ARGS[@]}"
     
     if [ $? -eq 0 ]; then
         echo "✓ $description computation completed successfully!"
