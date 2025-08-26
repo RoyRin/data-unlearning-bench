@@ -74,7 +74,7 @@ def get_margins_filename(model_path, data_path, margins_folder=None):
     model_name = model_path.stem  # e.g., "state_step001390"
     
     # Create margins filename
-    margins_filename = f"{model_name}_margins_{data_path.stem}_{data_hash}.pt"
+    margins_filename = f"{model_name}_margins_{data_path.stem}_{data_hash}.npy"
     
     # Use specified margins folder or default to model directory
     if margins_folder is not None:
@@ -96,18 +96,19 @@ def load_existing_margins(margins_path):
         return margins_data
     return None
 
-def save_margins(margins_path, margins, model_path, data_path, margin_stats):
+def save_margins(margins_path, metadata_path, margins, model_path, data_path, margin_stats):
     """Save margins along with metadata."""
-    margins_data = {
-        'margins': margins,
+    margins_meta = {
         'model_path': str(model_path),
         'data_path': str(data_path),
         'num_tokens': len(margins),
         'margin_stats': margin_stats
     }
     
-    torch.save(margins_data, margins_path)
+    np.save(margins_path, margins)
+    torch.save(margins_meta, metadata_path)
     print(f"Saved margins to: {margins_path}")
+    print(f"Saved metadata to: {metadata_path}")
 
 def load_model(checkpoint_path, device='cuda'):
     """Load model from checkpoint"""
@@ -136,6 +137,7 @@ def compute_margins(model_path, data_path, margins_folder=None):
     
     # Check if margins already exist
     margins_path = get_margins_filename(model_path, data_path, margins_folder)
+    metadata_path = Path(str(margins_path).replace(".npy", "_metadata.pt"))
     existing_margins = load_existing_margins(margins_path)
     
     if existing_margins is not None:
@@ -205,7 +207,7 @@ def compute_margins(model_path, data_path, margins_folder=None):
     print(f"  Max: {margin_stats['max']:.4f}")
     
     # Save margins
-    save_margins(margins_path, all_margins, model_path, data_path, margin_stats)
+    save_margins(margins_path, metadata_path, all_margins, model_path, data_path, margin_stats)
     
     margins_data = {
         'margins': all_margins,
