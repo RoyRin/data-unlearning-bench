@@ -8,6 +8,7 @@ For example: python teacher_margins.py logs/0e7c9660-7014-4267-b5f7-fc4ebf0625cc
 import argparse
 import sys
 import torch
+import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import hashlib
