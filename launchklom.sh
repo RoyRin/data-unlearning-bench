@@ -58,9 +58,12 @@ Examples:
      --clip-min -50 --clip-max 50
 
 Output files:
-  - klom_forget.pt: KL divergence scores for forget set
-  - klom_retain.pt: KL divergence scores for retain set  
-  - klom_val.pt: KL divergence scores for validation set
+  - klom_forget.npy: KL divergence scores for forget set
+  - klom_retain.npy: KL divergence scores for retain set  
+  - klom_val.npy: KL divergence scores for validation set
+  - klom_forget_metadata.pt: KL divergence metadata for forget set
+  - klom_retain_metadata.pt: KL divergence metadata for retain set  
+  - klom_val_metadata.pt: KL divergence metadata for validation set
 EOF
 }
 
@@ -332,23 +335,23 @@ echo "============================================"
 
 # 1. Forget set (training data with forget indices)
 echo "COMPUTATION 1/3: FORGET SET"
-run_teacher_klom "$OUTPUT_DIR/klom_forget.pt" "$FORGET_INDICES" true "forget set" "train"
+run_teacher_klom "$OUTPUT_DIR/klom_forget.npy" "$FORGET_INDICES" true "forget set" "train"
 
 # 2. Retain set (training data with retain indices)
 echo "COMPUTATION 2/3: RETAIN SET"
-run_teacher_klom "$OUTPUT_DIR/klom_retain.pt" "$RETAIN_INDICES" true "retain set" "train"
+run_teacher_klom "$OUTPUT_DIR/klom_retain.npy" "$RETAIN_INDICES" true "retain set" "train"
 
 # 3. Validation set (validation data, no subset)
 echo "COMPUTATION 3/3: VALIDATION SET"
-run_teacher_klom "$OUTPUT_DIR/klom_val.pt" "" false "validation set" "val"
+run_teacher_klom "$OUTPUT_DIR/klom_val.npy" "" false "validation set" "val"
 
 echo "============================================"
 echo "ALL KL DIVERGENCE COMPUTATIONS COMPLETED SUCCESSFULLY!"
 echo "============================================"
 echo "Results saved to:"
-echo "  - Forget set: $OUTPUT_DIR/klom_forget.pt"
-echo "  - Retain set: $OUTPUT_DIR/klom_retain.pt"
-echo "  - Validation set: $OUTPUT_DIR/klom_val.pt"
+echo "  - Forget set: $OUTPUT_DIR/klom_forget.npy"
+echo "  - Retain set: $OUTPUT_DIR/klom_retain.npy"
+echo "  - Validation set: $OUTPUT_DIR/klom_val.npy"
 echo "============================================"
 
 echo "Launch script completed." 

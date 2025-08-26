@@ -1,5 +1,5 @@
-import torch
 import numpy as np
+import torch # just being used to save some metadata no tensors involved in this script
 from tqdm import tqdm
 import argparse
 import sys
@@ -202,10 +202,9 @@ def load_margins_in_batched_ensembles(
                 batch_size=batch_size
             )
 
-def save_kl_results(results, output_path, unlearned_paths, oracle_paths, stats, subset_info=None):
+def save_kl_results(results, output_path, metadata_path, unlearned_paths, oracle_paths, stats, subset_info=None):
     """Save KL divergence results with metadata"""
-    output_data = {
-        'kl_scores': results,
+    output_meta = {
         'unlearned_margin_paths': [str(p) for p in unlearned_paths],
         'oracle_margin_paths': [str(p) for p in oracle_paths],
         'num_samples': len(results),
@@ -213,10 +212,12 @@ def save_kl_results(results, output_path, unlearned_paths, oracle_paths, stats, 
     }
     
     if subset_info:
-        output_data['subset_info'] = subset_info
+        output_meta['subset_info'] = subset_info
     
-    torch.save(output_data, output_path)
+    np.save(output_path, results)
+    torch.save(output_meta, metadata_path)
     print(f"Saved KL divergence results to: {output_path}")
+    print(f"Saved KL divergence metadata to: {metadata_path}")
 
 
 def main():
@@ -258,6 +259,8 @@ def main():
     unlearned_dir = Path(args.unlearned_dir)
     oracle_dir = Path(args.oracle_dir)
     output_path = Path(args.output)
+    assert str(output_path).endswith(".npy"), f"only .npy ouputs supported but found {str(output_path)}"
+    metadata_path = Path(str(output_path).replace(".npy", "_metadata.pt")) # a bit dirty
     
     if not unlearned_dir.exists():
         print(f"Error: Unlearned margins directory does not exist: {unlearned_dir}")
@@ -401,7 +404,7 @@ def main():
     print(f"  Total samples: {len(results):,}")
     
     # Save results
-    save_kl_results(results, output_path, unlearned_files, oracle_files, stats, subset_info)
+    save_kl_results(results, output_path, metadata_path, unlearned_files, oracle_files, stats, subset_info)
     
     print(f"\n" + "=" * 80)
     print(f"KL DIVERGENCE COMPUTATION COMPLETED SUCCESSFULLY!")
@@ -410,6 +413,7 @@ def main():
     if subset_info:
         print(f"Used margin subset from {subset_info['batch_indices_count']} batches ({subset_info['indices_file_path']})")
     print(f"Results saved to: {output_path}")
+    print(f"Metadata saved to: {metadata_path}")
     print(f"=" * 80)
 
 
