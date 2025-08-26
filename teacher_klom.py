@@ -17,21 +17,14 @@ import pdb
 def compute_kl_numpy(pk: np.ndarray, qk: np.ndarray) -> np.ndarray:
     """
     Computes KL divergence using pure NumPy, robustly handling the p=0 edge case.
-    Formula: Σ pk * log(pk / qk)
     """
     terms = np.zeros_like(pk, dtype=float)
     mask = pk > 0
-    
-    # Important: Ensure qk[mask] is not zero to prevent log(inf)
-    qk_masked = qk[mask]
-    pk_masked = pk[mask]
-    
     # Calculate the terms ONLY where pk is positive
-    terms[mask] = pk_masked * np.log(pk_masked / qk_masked)
-    
+    terms[mask] = pk[mask] * np.log(pk[mask] / qk[mask])
     return np.sum(terms, axis=0)
 
-def compute_binned_KL_div_vectorized_with_checks(
+def compute_binned_KL_div_vectorized(
     p_chunk: np.ndarray,
     q_chunk: np.ndarray,
     bin_count=20,
@@ -43,7 +36,6 @@ def compute_binned_KL_div_vectorized_with_checks(
     Computes KL divergence using a manual NumPy implementation for the final entropy
     step, providing full transparency and NaN safety.
     """
-    # --- Phases 1-7: Unchanged ---
     p_chunk = np.clip(p_chunk, min_val, max_val)
     q_chunk = np.clip(q_chunk, min_val, max_val)
     
@@ -74,65 +66,9 @@ def compute_binned_KL_div_vectorized_with_checks(
     
     q_bin_probs_safe = np.where(p_bin_probs > 0, np.maximum(q_bin_probs, eps), q_bin_probs)
     
-    # --- Phase 8: Final KL Score using our transparent NumPy function ---
     kl_divs = compute_kl_numpy(pk=p_bin_probs, qk=q_bin_probs_safe)
-
-    # The debugger hook is now even more powerful. If a NaN still occurs,
-    # you can inspect the inputs and the manual calculation itself.
-    if np.isnan(kl_divs).any():
-        print(f"\n" + "="*80)
-        print(f"❌ NAN VALUE DETECTED at phase: 'Final KL Scores (NumPy)'")
-        print(f"   This is unexpected, as the manual implementation should prevent NaNs.")
-        print(f"   Dropping into debugger with full context.")
-        
-        nan_indices = np.argwhere(np.isnan(kl_divs)).flatten()
-        first_nan_idx = nan_indices[0]
-        print(f"   First NaN is at index: {first_nan_idx}")
-        print(f"   SUGGESTED COMMANDS to inspect the inputs to the failed calculation:")
-        print(f"     p p_bin_probs[:, {first_nan_idx}]")
-        print(f"     p q_bin_probs_safe[:, {first_nan_idx}]")
-        print("="*80)
-        
-        pdb.set_trace()
-
-    # Final safety net just in case of infinities
+    
     return np.nan_to_num(kl_divs, nan=0.0, posinf=0.0, neginf=0.0)
-
-def compute_binned_KL_div_vectorized(
-    p_chunk: np.ndarray,
-    q_chunk: np.ndarray,
-    bin_count=20,
-    eps=1e-5,
-    min_val=-100,
-    max_val=100,
-):
-    """
-    Computes KL divergence for a chunk of samples in a fully vectorized manner.
-    This version has been validated to be numerically equivalent to the original.
-    """
-    p_chunk = np.clip(p_chunk, min_val, max_val)
-    q_chunk = np.clip(q_chunk, min_val, max_val)
-    bins_starts = np.minimum(p_chunk.min(axis=0), q_chunk.min(axis=0))
-    bins_ends = np.maximum(p_chunk.max(axis=0), q_chunk.max(axis=0))
-    identical_mask = bins_starts >= bins_ends
-    bins_ends[identical_mask] = bins_starts[identical_mask] + 1
-    
-    bin_edges = np.stack(
-        [np.linspace(bins_starts[i], bins_ends[i], bin_count + 1) for i in range(p_chunk.shape[1])],
-        axis=1
-    )
-    
-    p_binned_indices = np.sum(p_chunk[:, np.newaxis, :] >= bin_edges[np.newaxis, :, :], axis=1)
-    q_binned_indices = np.sum(q_chunk[:, np.newaxis, :] >= bin_edges[np.newaxis, :, :], axis=1)
-    bin_range = np.arange(1, bin_count + 1)[:, np.newaxis, np.newaxis]
-    p_bin_counts = np.sum(p_binned_indices == bin_range, axis=1).astype(float)
-    q_bin_counts = np.sum(q_binned_indices == bin_range, axis=1).astype(float)
-    p_totals = p_bin_counts.sum(axis=0)
-    q_totals = q_bin_counts.sum(axis=0)
-    p_bin_probs = np.divide(p_bin_counts, p_totals, where=p_totals > 0)
-    q_bin_probs = np.divide(q_bin_counts, q_totals, where=q_totals > 0)
-    q_bin_probs_safe = np.where(p_bin_probs > 0, np.maximum(q_bin_probs, eps), q_bin_probs)
-    return stats.entropy(pk=p_bin_probs, qk=q_bin_probs_safe, axis=0)
 
 def kl_from_margin_generators_vectorized(
     unlearned_margins_generator: Generator[np.ndarray, None, None],
@@ -159,7 +95,7 @@ def kl_from_margin_generators_vectorized(
         assert (oracle_chunk.shape == unlearned_chunk.shape), \
             f"Margin chunk shapes must match. Got {oracle_chunk.shape} and {unlearned_chunk.shape}"
 
-        kl_divs_chunk = compute_binned_KL_div_vectorized_with_checks(
+        kl_divs_chunk = compute_binned_KL_div_vectorized(
             p_chunk=unlearned_chunk,
             q_chunk=oracle_chunk,
             min_val=clip_min,
