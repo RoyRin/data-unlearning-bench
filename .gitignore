@@ -20,3 +20,4 @@ external_repos/
 old_*.md
 *egg-info*
 *.bin
+hf_conversion_temp/

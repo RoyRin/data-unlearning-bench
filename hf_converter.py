@@ -12,8 +12,9 @@ import json
 import requests
 import torch
 import numpy as np
+import threading
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Callable
 from urllib.parse import quote
 from tqdm import tqdm
 from dataclasses import dataclass
@@ -37,7 +38,8 @@ class HuggingFaceConverter:
                  target_paths: List[str],
                  local_dir: str = "./temp_conversion",
                  cleanup_after_upload: bool = True,
-                 batch_size: int = 1,
+                 max_workers: int = 16,
+                 rename_functions: Optional[List[Callable[[str], str]]] = None,
                  **kwargs):
         """
         Initialize the converter.
@@ -49,7 +51,8 @@ class HuggingFaceConverter:
             target_paths: List of paths within target repo for uploads (must match source_paths length)
             local_dir: Local directory for temporary storage
             cleanup_after_upload: If True, delete files after successful upload
-            batch_size: Number of files to process before uploading (1 = immediate upload)
+            max_workers: Maximum number of worker threads for parallel processing (default: 16)
+            rename_functions: List of functions to rename files (must match source_paths length if provided)
         """
         # Handle backward compatibility - if old single path args are provided
         if 'source_path' in kwargs and 'target_path' in kwargs:
@@ -59,13 +62,17 @@ class HuggingFaceConverter:
         if len(source_paths) != len(target_paths):
             raise ValueError("source_paths and target_paths must have the same length")
         
+        if rename_functions and len(rename_functions) != len(source_paths):
+            raise ValueError("rename_functions must have the same length as source_paths if provided")
+        
         self.source_repo = source_repo
         self.source_paths = source_paths
         self.target_repo = target_repo
         self.target_paths = target_paths
         self.local_dir = Path(local_dir)
         self.cleanup_after_upload = cleanup_after_upload
-        self.batch_size = batch_size
+        self.max_workers = max_workers
+        self.rename_functions = rename_functions or [None] * len(source_paths)
         
         # Create local directories
         self.download_dir = self.local_dir / "downloads"
@@ -78,13 +85,15 @@ class HuggingFaceConverter:
         
         # Track processed files across all paths
         self.processed_files = set()
+        self.progress_lock = threading.Lock()
         self.load_progress()
     
     def save_progress(self):
         """Save progress to resume later if needed."""
         progress_file = self.local_dir / "progress.json"
-        with open(progress_file, 'w') as f:
-            json.dump(list(self.processed_files), f)
+        with self.progress_lock:
+            with open(progress_file, 'w') as f:
+                json.dump(list(self.processed_files), f)
     
     def load_progress(self):
         """Load previous progress if exists."""
@@ -140,51 +149,12 @@ class HuggingFaceConverter:
         print(f"\nTotal across all paths: {len(all_files)} .pt files")
         print(f"Combined dataset size: {total_size / 1024 / 1024 / 1024:.2f} GB")
         
+        # Sort by file size (smallest first) to ensure homogeneous batches during parallel processing
+        all_files.sort(key=lambda f: f.size)
+        print("Files sorted by size (smallest first) for optimal batch processing")
+        
         return all_files, total_size
     
-    def estimate_dataset_size(self):
-        """
-        Estimate total size and provide recommendation for processing strategy.
-        """
-        file_infos, total_size = self.get_file_info()
-        
-        if not file_infos:
-            return
-        
-        # Estimate converted size (numpy files are often similar or slightly smaller)
-        estimated_npy_size = total_size * 0.9  # Conservative estimate
-        
-        # Get available disk space
-        stat = os.statvfs(self.local_dir)
-        available_space = stat.f_bavail * stat.f_frsize
-        
-        print(f"\n{'='*60}")
-        print("DATASET SIZE ANALYSIS:")
-        print(f"{'='*60}")
-        print(f"Number of files: {len(file_infos)}")
-        print(f"Total .pt size: {total_size / 1024 / 1024 / 1024:.2f} GB")
-        print(f"Estimated .npy size: {estimated_npy_size / 1024 / 1024 / 1024:.2f} GB")
-        print(f"Available disk space: {available_space / 1024 / 1024 / 1024:.2f} GB")
-        print(f"Space needed for batch processing: {(total_size + estimated_npy_size) / 1024 / 1024 / 1024:.2f} GB")
-        print(f"Space needed for streaming (one file): {max(f.size for f in file_infos) * 2 / 1024 / 1024 / 1024:.2f} GB")
-        
-        # Recommendation
-        print(f"\n{'='*60}")
-        print("RECOMMENDATION:")
-        
-        if (total_size + estimated_npy_size) < available_space * 0.8:  # Keep 20% buffer
-            print("✓ You have enough space for batch processing (download all, then convert).")
-            print("  This would be faster but requires more disk space.")
-            recommended_batch = len(file_infos)
-        else:
-            print("✗ Limited disk space - use streaming mode (process one file at a time).")
-            print("  This is slower but requires minimal disk space.")
-            recommended_batch = 1
-        
-        print(f"\nRecommended batch_size: {recommended_batch}")
-        print(f"{'='*60}\n")
-        
-        return file_infos, total_size, recommended_batch
     
     def download_file_with_requests(self, file_info: FileInfo) -> bool:
         """
@@ -244,13 +214,19 @@ class HuggingFaceConverter:
                 temp_path.unlink()
             return False
     
-    def convert_pt_to_npy(self, pt_filename: str) -> Optional[str]:
+    def convert_pt_to_npy(self, pt_filename: str, source_path_index: int = None) -> Optional[str]:
         """
         Convert a .pt file to .npy format.
         Returns the npy filename if successful, None otherwise.
         """
         pt_path = self.download_dir / pt_filename
-        npy_filename = pt_filename.replace('.pt', '.npy')
+        
+        # Determine the npy filename using rename function if provided
+        if source_path_index is not None and self.rename_functions[source_path_index] is not None:
+            npy_filename = self.rename_functions[source_path_index](pt_filename)
+        else:
+            npy_filename = pt_filename.replace('.pt', '.npy')
+        
         npy_path = self.converted_dir / npy_filename
         
         try:
@@ -322,6 +298,7 @@ class HuggingFaceConverter:
         
         try:
             print(f"  Uploading {npy_filename} to {target_path} ({npy_path.stat().st_size / 1024 / 1024:.1f} MB)...")
+            print(f"  Full upload path will be: {target_path}/{npy_filename}")
             
             # Create the target repository if it doesn't exist
             try:
@@ -364,16 +341,27 @@ class HuggingFaceConverter:
         print(f"\nProcessing {file_info.name}...")
         
         # Skip if already processed
-        if file_info.name in self.processed_files:
-            print(f"  Already processed in previous run, skipping...")
-            return True
+        with self.progress_lock:
+            if file_info.name in self.processed_files:
+                print(f"  Already processed in previous run, skipping...")
+                return True
+        
+        # Find which source path this file belongs to
+        source_path_index = None
+        for i, path in enumerate(self.source_paths):
+            if file_info.path.startswith(path):
+                source_path_index = i
+                print(f"  File belongs to source path {i}: {path}")
+                if self.rename_functions[i] is not None:
+                    print(f"  Will use rename function: {self.rename_functions[i].__name__}")
+                break
         
         # Download
         if not self.download_file_with_requests(file_info):
             return False
         
         # Convert
-        npy_filename = self.convert_pt_to_npy(file_info.name)
+        npy_filename = self.convert_pt_to_npy(file_info.name, source_path_index)
         if not npy_filename:
             return False
         
@@ -382,30 +370,16 @@ class HuggingFaceConverter:
             return False
         
         # Mark as processed and save progress
-        self.processed_files.add(file_info.name)
+        with self.progress_lock:
+            self.processed_files.add(file_info.name)
         self.save_progress()
         
         return True
     
-    def process_batch(self, file_infos: List[FileInfo]) -> Tuple[int, int]:
-        """
-        Process a batch of files.
-        Returns: (successful_count, failed_count)
-        """
-        successful = 0
-        failed = 0
-        
-        for file_info in file_infos:
-            if self.process_single_file(file_info):
-                successful += 1
-            else:
-                failed += 1
-        
-        return successful, failed
     
-    def run_streaming(self, file_infos: Optional[List[FileInfo]] = None):
+    def run(self, file_infos: Optional[List[FileInfo]] = None):
         """
-        Run in streaming mode - process one file at a time to minimize disk usage.
+        Run the conversion - process files in parallel to minimize disk usage.
         """
         # Get file list
         if file_infos is None:
@@ -416,22 +390,33 @@ class HuggingFaceConverter:
             return
         
         print(f"\n{'='*50}")
-        print(f"Starting STREAMING mode processing")
+        print(f"Starting processing with {self.max_workers} parallel workers")
         print(f"Files to process: {len(file_infos)} across {len(self.source_paths)} paths")
         print(f"Each file will be deleted after upload to save space")
         print(f"{'='*50}\n")
         
-        # Process files one by one
+        # Process all files in parallel using ThreadPoolExecutor
         total_success = 0
         total_failed = 0
         
-        with tqdm(total=len(file_infos), desc="Overall Progress") as pbar:
-            for i in range(0, len(file_infos), self.batch_size):
-                batch = file_infos[i:i+self.batch_size]
-                success, failed = self.process_batch(batch)
-                total_success += success
-                total_failed += failed
-                pbar.update(len(batch))
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tasks
+            future_to_file = {executor.submit(self.process_single_file, file_info): file_info 
+                             for file_info in file_infos}
+            
+            # Collect results with progress bar
+            with tqdm(total=len(file_infos), desc="Overall Progress") as pbar:
+                for future in as_completed(future_to_file):
+                    file_info = future_to_file[future]
+                    try:
+                        if future.result():
+                            total_success += 1
+                        else:
+                            total_failed += 1
+                    except Exception as e:
+                        print(f"Processing failed for {file_info.name}: {e}")
+                        total_failed += 1
+                    pbar.update(1)
         
         # Report results
         print(f"\n{'='*50}")
@@ -442,50 +427,6 @@ class HuggingFaceConverter:
         # Clean up any remaining files
         self.cleanup_remaining_files()
         
-    def run_batch_mode(self, file_infos: Optional[List[FileInfo]] = None):
-        """
-        Run in batch mode - download all, convert all, then upload all.
-        More efficient but requires more disk space.
-        """
-        if file_infos is None:
-            file_infos, _ = self.get_file_info()[:2]
-        
-        if not file_infos:
-            print("No files to process")
-            return
-        
-        print(f"\n{'='*50}")
-        print(f"Starting BATCH mode processing")
-        print(f"Files to process: {len(file_infos)} across {len(self.source_paths)} paths")
-        print(f"{'='*50}\n")
-        
-        # Download all files
-        print("Phase 1: Downloading all files...")
-        downloaded = []
-        for file_info in tqdm(file_infos, desc="Downloading"):
-            if self.download_file_with_requests(file_info):
-                downloaded.append(file_info)
-        
-        # Convert all files
-        print("\nPhase 2: Converting all files...")
-        converted = []
-        for file_info in tqdm(downloaded, desc="Converting"):
-            npy_filename = self.convert_pt_to_npy(file_info.name)
-            if npy_filename:
-                converted.append((npy_filename, file_info))
-        
-        # Upload all files
-        print("\nPhase 3: Uploading all files...")
-        uploaded = 0
-        for npy_filename, file_info in tqdm(converted, desc="Uploading"):
-            if self.upload_single_file(npy_filename, file_info):
-                uploaded += 1
-        
-        print(f"\n{'='*50}")
-        print(f"Batch processing complete!")
-        print(f"  Downloaded: {len(downloaded)}/{len(file_infos)}")
-        print(f"  Converted: {len(converted)}/{len(downloaded)}")
-        print(f"  Uploaded: {uploaded}/{len(converted)}")
         
     def cleanup_remaining_files(self):
         """Clean up any remaining local files."""
@@ -498,35 +439,107 @@ class HuggingFaceConverter:
                 f.unlink()
             print(f"  Deleted {len(pt_files)} .pt files and {len(npy_files)} .npy files")
     
-    def run(self, mode: str = "auto"):
-        """
-        Main entry point for running the conversion.
-        
-        Args:
-            mode: "streaming" for one-by-one processing (minimal disk usage)
-                  "batch" for download-all-then-process (faster but needs more space)
-                  "auto" to automatically choose based on available space
-        """
-        if mode == "auto":
-            file_infos, total_size, recommended_batch = self.estimate_dataset_size()
-            
-            if not file_infos:
-                print("Could not fetch file information")
-                return
-            
-            if recommended_batch == 1:
-                mode = "streaming"
-            else:
-                print(f"\nChoose processing mode:")
-                print("  1. Streaming (one file at a time, minimal disk usage)")
-                print("  2. Batch (download all first, faster but needs more space)")
-                choice = input("Enter choice (1 or 2): ").strip()
-                mode = "streaming" if choice == "1" else "batch"
-        
-        if mode == "streaming":
-            self.run_streaming()
+
+
+def rename_full_model(filename: str) -> str:
+    """
+    Rename full model files from 'full_model_X_margins_fineweb_train_subset_*.pt' to 'nanogpt_train_X.npy' or 'nanogpt_val_X.npy'
+    """
+    import re
+    # Extract model index from filename like 'full_model_0_margins_fineweb_train_subset_063c453b.pt'
+    match = re.search(r'full_model_(\d+)_', filename)
+    if match:
+        model_idx = match.group(1)
+        # Determine if it's train or val based on filename content
+        if 'val' in filename.lower():
+            data_split = 'val'
+        elif 'train' in filename.lower():
+            data_split = 'train'
         else:
-            self.run_batch_mode()
+            assert False, f"Filename must contain 'train' or 'val': {filename}"
+        new_name = f"nanogpt_{data_split}_{model_idx}.npy"
+        print(f"  Renaming: {filename} -> {new_name}")
+        return new_name
+    else:
+        # Fallback: just replace extension
+        new_name = filename.replace('.pt', '.npy')
+        print(f"  Warning: Could not extract model index from {filename}, using {new_name}")
+        return new_name
+
+def rename_oracle_loss_1pct(filename: str) -> str:
+    """
+    Rename oracle loss 1% files from 'oracle_loss_1pct_X_margins_fineweb_train_subset_*.pt' to 'nanogpt_train_X.npy' or 'nanogpt_val_X.npy'
+    """
+    import re
+    # Extract model index from filename like 'oracle_loss_1pct_0_margins_fineweb_train_subset_063c453b.pt'
+    match = re.search(r'oracle_loss_1pct_(\d+)_', filename)
+    if match:
+        model_idx = match.group(1)
+        # Determine if it's train or val based on filename content
+        if 'val' in filename.lower():
+            data_split = 'val'
+        elif 'train' in filename.lower():
+            data_split = 'train'
+        else:
+            assert False, f"Filename must contain 'train' or 'val': {filename}"
+        new_name = f"nanogpt_{data_split}_{model_idx}.npy"
+        print(f"  Renaming: {filename} -> {new_name}")
+        return new_name
+    else:
+        # Fallback: just replace extension
+        new_name = filename.replace('.pt', '.npy')
+        print(f"  Warning: Could not extract model index from {filename}, using {new_name}")
+        return new_name
+
+def rename_oracle_loss_5pct(filename: str) -> str:
+    """
+    Rename oracle loss 5% files from 'oracle_loss_5pct_X_margins_fineweb_train_subset_*.pt' to 'nanogpt_train_X.npy' or 'nanogpt_val_X.npy'
+    """
+    import re
+    # Extract model index from filename like 'oracle_loss_5pct_0_margins_fineweb_train_subset_063c453b.pt'
+    match = re.search(r'oracle_loss_5pct_(\d+)_', filename)
+    if match:
+        model_idx = match.group(1)
+        # Determine if it's train or val based on filename content
+        if 'val' in filename.lower():
+            data_split = 'val'
+        elif 'train' in filename.lower():
+            data_split = 'train'
+        else:
+            assert False, f"Filename must contain 'train' or 'val': {filename}"
+        new_name = f"nanogpt_{data_split}_{model_idx}.npy"
+        print(f"  Renaming: {filename} -> {new_name}")
+        return new_name
+    else:
+        # Fallback: just replace extension
+        new_name = filename.replace('.pt', '.npy')
+        print(f"  Warning: Could not extract model index from {filename}, using {new_name}")
+        return new_name
+
+def rename_oracle_random_1pct(filename: str) -> str:
+    """
+    Rename oracle random 1% files from 'oracle_random_1pct_X_margins_fineweb_train_subset_*.pt' to 'nanogpt_train_X.npy' or 'nanogpt_val_X.npy'
+    """
+    import re
+    # Extract model index from filename like 'oracle_random_1pct_0_margins_fineweb_train_subset_063c453b.pt'
+    match = re.search(r'oracle_random_1pct_(\d+)_', filename)
+    if match:
+        model_idx = match.group(1)
+        # Determine if it's train or val based on filename content
+        if 'val' in filename.lower():
+            data_split = 'val'
+        elif 'train' in filename.lower():
+            data_split = 'train'
+        else:
+            assert False, f"Filename must contain 'train' or 'val': {filename}"
+        new_name = f"nanogpt_{data_split}_{model_idx}.npy"
+        print(f"  Renaming: {filename} -> {new_name}")
+        return new_name
+    else:
+        # Fallback: just replace extension
+        new_name = filename.replace('.pt', '.npy')
+        print(f"  Warning: Could not extract model index from {filename}, using {new_name}")
+        return new_name
 
 
 def main():
@@ -542,46 +555,29 @@ def main():
             'margins/oracle_loss_1_pct',
             'margins/oracle_random_1_pct'
         ],
-        'target_repo': 'royrin/KLOM-models',
+        'target_repo': 'puigde/data-unlearning',
         'target_paths': [
-            'margins/full_models_npy',
-            'margins/oracle_loss_5_pct_npy',
-            'margins/oracle_loss_1_pct_npy',
-            'margins/oracle_random_1_pct_npy'
+            'fineweb/margins/pretrain',
+            'fineweb/margins/loss_5_pct',
+            'fineweb/margins/loss_1_pct',
+            'fineweb/margins/random_1_pct'
+        ],
+        'rename_functions': [
+            rename_full_model,           # For margins/full_models
+            rename_oracle_loss_5pct,     # For margins/oracle_loss_5_pct
+            rename_oracle_loss_1pct,     # For margins/oracle_loss_1_pct
+            rename_oracle_random_1pct    # For margins/oracle_random_1_pct
         ],
         'local_dir': './hf_conversion_temp',
         'cleanup_after_upload': True,  # DELETE files after upload to save space
-        'batch_size': 1  # Process 1 file at a time for minimal disk usage
+        'max_workers': 16  # Process up to 16 files in parallel
     }
     
     # Initialize converter
     converter = HuggingFaceConverter(**config)
     
-    # First, analyze the dataset size
-    print("Analyzing dataset...")
-    file_infos, total_size, recommended = converter.estimate_dataset_size()
-    
-    if not file_infos:
-        print("Could not fetch dataset information. Please check repo path and permissions.")
-        return
-    
-    # Ask user how to proceed
-    print("\nHow would you like to proceed?")
-    print("  1. Streaming mode (process one file at a time, minimal disk usage)")
-    print("  2. Batch mode (download all, then process - needs more disk space)")
-    print("  3. Just show dataset info and exit")
-    
-    choice = input("\nEnter your choice (1-3): ").strip()
-    
-    if choice == "1":
-        converter.run_streaming()
-    elif choice == "2":
-        converter.run_batch_mode()
-    elif choice == "3":
-        print("Exiting without processing.")
-    else:
-        print("Invalid choice. Running in auto mode...")
-        converter.run(mode="auto")
+    # Run the conversion
+    converter.run()
 
 
 if __name__ == "__main__":
