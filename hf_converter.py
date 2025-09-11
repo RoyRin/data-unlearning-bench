@@ -155,6 +155,113 @@ class HuggingFaceConverter:
         
         return all_files, total_size
     
+    def get_existing_target_files(self) -> Dict[str, List[str]]:
+        """
+        Get list of existing files in all target paths.
+        Returns: dict mapping target_path -> list of existing filenames
+        """
+        existing_files = {}
+        
+        print(f"Fetching existing files from target repository {self.target_repo}...")
+        
+        for target_path in self.target_paths:
+            print(f"  Checking target path: {target_path}")
+            api_url = f"https://huggingface.co/api/datasets/{self.target_repo}/tree/main/{target_path}"
+            
+            try:
+                response = requests.get(api_url)
+                response.raise_for_status()
+                files = response.json()
+                
+                # Extract filenames from the path
+                filenames = [f['path'].split('/')[-1] for f in files if f['path'].endswith('.npy')]
+                existing_files[target_path] = filenames
+                print(f"    Found {len(filenames)} existing .npy files")
+                
+            except requests.exceptions.RequestException as e:
+                print(f"    No files found or path doesn't exist (this is normal for new uploads): {e}")
+                existing_files[target_path] = []
+        
+        return existing_files
+    
+    def prefilter_files(self, source_files: List[FileInfo]) -> List[FileInfo]:
+        """
+        Filter out source files that have already been uploaded to target repository.
+        This prevents re-processing files that are already converted and uploaded.
+        """
+        print(f"\n{'='*60}")
+        print("PREFILTERING: Checking for already uploaded files")
+        print(f"{'='*60}")
+        
+        # Get existing target files
+        existing_target_files = self.get_existing_target_files()
+        
+        total_existing = sum(len(filenames) for filenames in existing_target_files.values())
+        print(f"Total existing target files across all paths: {total_existing}")
+        for target_path, filenames in existing_target_files.items():
+            print(f"  {target_path}: {len(filenames)} files")
+        
+        # Filter source files
+        filtered_files = []
+        skipped_count = 0
+        
+        print(f"\nFiltering {len(source_files)} source files...")
+        
+        for file_info in source_files:
+            # Find which source path this file belongs to
+            source_path_index = None
+            for i, path in enumerate(self.source_paths):
+                if file_info.path.startswith(path):
+                    source_path_index = i
+                    break
+            
+            if source_path_index is None:
+                print(f"  Warning: Could not determine source path for {file_info.name}, skipping...")
+                continue
+            
+            # Apply rename function to get expected target filename
+            if self.rename_functions[source_path_index] is not None:
+                expected_target_name = self.rename_functions[source_path_index](file_info.name)
+            else:
+                expected_target_name = file_info.name.replace('.pt', '.npy')
+            
+            # Get the corresponding target path for this source file
+            target_path = self.target_paths[source_path_index]
+            existing_in_target_path = existing_target_files.get(target_path, [])
+            
+            # Check if this target file already exists in the SPECIFIC target path
+            if expected_target_name in existing_in_target_path:
+                print(f"  ⏭️  Skipping {file_info.name} -> {expected_target_name} (already exists in {target_path})")
+                skipped_count += 1
+            else:
+                filtered_files.append(file_info)
+        
+        print(f"\nPrefiltering complete:")
+        print(f"  Original files: {len(source_files)}")
+        print(f"  Already uploaded: {skipped_count}")
+        print(f"  Remaining to process: {len(filtered_files)}")
+        print(f"  {'='*60}\n")
+        
+        return filtered_files
+    
+    def verify_file_uploaded(self, target_path: str, filename: str) -> bool:
+        """
+        Verify that a file was successfully uploaded by checking the API.
+        Returns True if file exists, False otherwise.
+        """
+        try:
+            api_url = f"https://huggingface.co/api/datasets/{self.target_repo}/tree/main/{target_path}"
+            response = requests.get(api_url)
+            if response.status_code != 200:
+                return False
+                
+            files = response.json()
+            uploaded_files = [f['path'].split('/')[-1] for f in files if f['path'].endswith('.npy')]
+            return filename in uploaded_files
+            
+        except Exception as e:
+            print(f"  ⚠️  Error verifying upload: {e}")
+            return False
     
     def download_file_with_requests(self, file_info: FileInfo) -> bool:
         """
@@ -321,9 +428,19 @@ class HuggingFaceConverter:
                 commit_message=f"Upload {npy_filename} to {target_path}",
             )
             
-            print(f"  ✓ Uploaded {npy_filename} to {target_path}")
+            # Verify the upload was successful by checking if file exists
+            print(f"  Verifying upload of {npy_filename}...")
+            # Small delay to allow HF to process the upload
+            import time
+            time.sleep(1)
             
-            # Clean up the local file immediately after upload
+            if not self.verify_file_uploaded(target_path, npy_filename):
+                print(f"  ✗ Upload verification failed: {npy_filename} not found in target repository")
+                return False
+            
+            print(f"  ✓ Successfully uploaded and verified {npy_filename} to {target_path}")
+            
+            # Clean up the local file immediately after successful upload
             if self.cleanup_after_upload:
                 npy_path.unlink()
                 print(f"    Deleted {npy_filename} to free space")
@@ -366,13 +483,17 @@ class HuggingFaceConverter:
             return False
         
         # Upload
-        if not self.upload_single_file(npy_filename, file_info):
+        upload_success = self.upload_single_file(npy_filename, file_info)
+        if not upload_success:
+            print(f"  ✗ Upload failed for {file_info.name}, will retry on next run")
             return False
         
-        # Mark as processed and save progress
+        # Only mark as processed AFTER successful upload verification
+        print(f"  ✓ All steps completed successfully for {file_info.name}")
         with self.progress_lock:
             self.processed_files.add(file_info.name)
         self.save_progress()
+        print(f"  📝 Added {file_info.name} to progress file")
         
         return True
     
@@ -387,6 +508,13 @@ class HuggingFaceConverter:
         
         if not file_infos:
             print("No files to process")
+            return
+        
+        # PREFILTERING: Remove files that are already uploaded
+        file_infos = self.prefilter_files(file_infos)
+        
+        if not file_infos:
+            print("All files have already been uploaded! Nothing to process.")
             return
         
         print(f"\n{'='*50}")
