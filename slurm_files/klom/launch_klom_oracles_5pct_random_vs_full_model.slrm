@@ -1,8 +1,8 @@
 #!/bin/sh
-#SBATCH --job-name=klom_5pct_random
+#SBATCH --job-name=5pct_random_klom
 #SBATCH --partition=kempner_h100
 #SBATCH --gres=gpu:1
-#SBATCH --mem=80G
+#SBATCH --mem=500G
 #SBATCH -t 0-38:00
 #SBATCH -c 1
 #SBATCH --output=/n/home04/rrinberg/catered_out/klom_bench/klom_5pct_random-%j.out
