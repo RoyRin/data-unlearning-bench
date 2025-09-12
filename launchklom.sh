@@ -24,6 +24,7 @@ TRAIN_DATA="data/fineweb10B/fineweb_train_subset.bin"
 VAL_DATA="data/fineweb10B/fineweb_val_000000.bin"
 CLIP_MIN=-100
 CLIP_MAX=100
+LEGACY_MODE=false
 
 # Function to show usage
 show_usage() {
@@ -42,6 +43,7 @@ Optional arguments:
   --val-data <path>         Path to validation data file (default: data/fineweb10B/fineweb_val_000000.bin)
   --clip-min <value>        Minimum value for clipping margins (default: -100)
   --clip-max <value>        Maximum value for clipping margins (default: 100)
+  --legacy                  Use the legacy teacher_klom.py script (old_teacher_klom.py)
   --help                    Show this help message
 
 Examples:
@@ -56,9 +58,12 @@ Examples:
      --clip-min -50 --clip-max 50
 
 Output files:
-  - klom_forget.pt: KL divergence scores for forget set
-  - klom_retain.pt: KL divergence scores for retain set  
-  - klom_val.pt: KL divergence scores for validation set
+  - klom_forget.npy: KL divergence scores for forget set
+  - klom_retain.npy: KL divergence scores for retain set  
+  - klom_val.npy: KL divergence scores for validation set
+  - klom_forget_metadata.pt: KL divergence metadata for forget set
+  - klom_retain_metadata.pt: KL divergence metadata for retain set  
+  - klom_val_metadata.pt: KL divergence metadata for validation set
 EOF
 }
 
@@ -154,6 +159,10 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: --clip-max requires a numeric value"
                 exit 1
             fi
+            ;;
+        --legacy)
+            LEGACY_MODE=true
+            shift
             ;;
         --help|-h)
             show_usage
@@ -298,11 +307,15 @@ run_teacher_klom() {
         CMD_ARGS+=("$subset_indices")
     fi
     
-    echo "Command: python teacher_klom.py ${CMD_ARGS[*]}"
+        local script_to_run="teacher_klom.py"
+    if [ "$LEGACY_MODE" = true ]; then
+        script_to_run="old_teacher_klom.py"
+    fi
+    echo "Command: python $script_to_run ${CMD_ARGS[*]}"
     echo "============================================"
     
     # Execute the command
-    python teacher_klom.py "${CMD_ARGS[@]}"
+    python "$script_to_run" "${CMD_ARGS[@]}"
     
     if [ $? -eq 0 ]; then
         echo "✓ $description computation completed successfully!"
@@ -322,23 +335,23 @@ echo "============================================"
 
 # 1. Forget set (training data with forget indices)
 echo "COMPUTATION 1/3: FORGET SET"
-run_teacher_klom "$OUTPUT_DIR/klom_forget.pt" "$FORGET_INDICES" true "forget set" "train"
+run_teacher_klom "$OUTPUT_DIR/klom_forget.npy" "$FORGET_INDICES" true "forget set" "train"
 
 # 2. Retain set (training data with retain indices)
 echo "COMPUTATION 2/3: RETAIN SET"
-run_teacher_klom "$OUTPUT_DIR/klom_retain.pt" "$RETAIN_INDICES" true "retain set" "train"
+run_teacher_klom "$OUTPUT_DIR/klom_retain.npy" "$RETAIN_INDICES" true "retain set" "train"
 
 # 3. Validation set (validation data, no subset)
 echo "COMPUTATION 3/3: VALIDATION SET"
-run_teacher_klom "$OUTPUT_DIR/klom_val.pt" "" false "validation set" "val"
+run_teacher_klom "$OUTPUT_DIR/klom_val.npy" "" false "validation set" "val"
 
 echo "============================================"
 echo "ALL KL DIVERGENCE COMPUTATIONS COMPLETED SUCCESSFULLY!"
 echo "============================================"
 echo "Results saved to:"
-echo "  - Forget set: $OUTPUT_DIR/klom_forget.pt"
-echo "  - Retain set: $OUTPUT_DIR/klom_retain.pt"
-echo "  - Validation set: $OUTPUT_DIR/klom_val.pt"
+echo "  - Forget set: $OUTPUT_DIR/klom_forget.npy"
+echo "  - Retain set: $OUTPUT_DIR/klom_retain.npy"
+echo "  - Validation set: $OUTPUT_DIR/klom_val.npy"
 echo "============================================"
 
 echo "Launch script completed." 
